@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rocket = "0.5.1"
+argon2 = "0.5.3"
+base64 = "0.22.1"
+chrono = "0.4.39"
+rand = "0.8.5"
+rocket = { version = "0.5.1", features = ["json"] }
 rocket_db_pools = { version = "0.2.0", features = ["mongodb"] }
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
+serde = { version = "1.0.217", features = ["derive"] }

@@ -1,16 +1,17 @@
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
 mod db;
 mod authentication;
+mod response;
+mod user;
 
 use rocket::fs::FileServer;
-use rocket_dyn_templates::{Template, context};
+use rocket_db_pools::Database;
 
 #[get("/")]
-fn index() -> Template {
-    Template::render("index", context! {
-        title: "MeTube", 
-    })
+fn index() -> &'static str {
+    "MeTube"
 }
 
 #[launch]
@@ -19,7 +20,9 @@ fn rocker() -> _ {
         .mount("/", routes![index])
         .mount("/api/auth", routes![
             authentication::login,
+            authentication::register,
         ])
         .mount("/static", FileServer::from("static"))
-        .attach(Template::fairing())
+        .attach(db::Db::init())
+        // .attach(Template::fairing())
 }
