@@ -1,7 +1,7 @@
+use rocket::http::CookieJar;
 use rocket::request::FromRequest;
-use rocket::form::{Form, FromForm};
 use rocket::serde::json::Json;
-use rocket_db_pools::{Connection, Database};
+use rocket_db_pools::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{DBWrapper, Db};
@@ -37,16 +37,15 @@ pub(crate) struct LoginForm {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-enum LoginResponse {
+pub(crate) enum LoginResponse {
     Ok {
         access_token: String,
-        refresh_token: String,
     },
     Error(LoginError),
 }
 
 #[derive(Serialize)]
-enum LoginError {
+pub(crate) enum LoginError {
     UserNotFound,
     InvalidCredentials,
     DatabaseError,
@@ -103,13 +102,13 @@ pub(crate) struct RegisterForm {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-enum RegisterResponse {
-    Ok,
+pub(crate) enum RegisterResponse {
+    Ok { },
     Error(RegisterError),
 }
 
 #[derive(Serialize)]
-enum RegisterError {
+pub(crate) enum RegisterError {
     UsernameTaken,
     InvalidPassword,
     InvalidUsername,
@@ -119,7 +118,7 @@ enum RegisterError {
 impl ApiResponse for RegisterResponse {
     fn status(&self) -> rocket::http::Status {
         match self {
-            RegisterResponse::Ok => rocket::http::Status::Ok,
+            RegisterResponse::Ok { .. } => rocket::http::Status::Ok,
             RegisterResponse::Error(e) => e.status(),
         }
     }
@@ -177,9 +176,9 @@ impl RegisterForm {
     }
 }
 
-impl Into<User> for RegisterForm {
-    fn into(self) -> User {
-        User::new(self.username, self.password)
+impl From<RegisterForm> for User {
+    fn from(form: RegisterForm) -> Self {
+        User::new(form.username, form.password)
     }
 }
 
@@ -187,13 +186,15 @@ impl Into<User> for RegisterForm {
 pub(crate) async fn register(form: Json<RegisterForm>, db: Connection<Db>) -> ApiResponder<RegisterResponse> {
     let form = form.into_inner();
     let db = DBWrapper::new(db.into_inner());
-    let user = match db.get_user(&form.username).await {
+    match db.get_user(&form.username).await {
         Ok(u) => match u {
+            //  username is taken
             Some(_) => return RegisterResponse::Error(RegisterError::UsernameTaken).into(),
-            None => u,
+            None => { /* ok, proceed */ },
         }
+        // db error
         Err(_) => return RegisterResponse::Error(RegisterError::DatabaseError).into()
-    };
+    }
     if let Some(e) = form.validate() {
         return RegisterResponse::Error(e).into();
     }
@@ -202,11 +203,11 @@ pub(crate) async fn register(form: Json<RegisterForm>, db: Connection<Db>) -> Ap
         panic!("{:?}", e)
     }
 
-    RegisterResponse::Ok.into()
+    RegisterResponse::Ok { }.into()
 }
 
 #[post("/login", data = "<form>", format = "json")]
-pub(crate) async fn login(form: Json<RegisterForm>, db: Connection<Db>) -> ApiResponder<LoginResponse> {
+pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiResponder<LoginResponse> {
     let db = DBWrapper::new(db.into_inner());
     let form = form.into_inner();
 
@@ -223,23 +224,196 @@ pub(crate) async fn login(form: Json<RegisterForm>, db: Connection<Db>) -> ApiRe
         if let Err(e) = db.update_user(&user).await {
             LoginResponse::Error(LoginError::DatabaseError).into()
         } else {
-            LoginResponse::Ok { access_token: access, refresh_token: refresh }.into()
+            #[cfg(debug_assertions)]
+            {
+                let user  = db.get_user(&form.username).await.unwrap().unwrap();
+                assert!(user.check_access(&access));
+                assert!(user.check_refresh(&refresh));
+            }
+            cookies.add_private(("refresh", refresh));
+            LoginResponse::Ok { access_token: access }.into()
         }
     } else {
         LoginResponse::Error(LoginError::InvalidCredentials).into()
     }
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum MeResponse {
+    Ok { username: String },
+    Error(MeError),
+}
+
+#[derive(Serialize)]
+pub(crate) enum MeError {
+    InvalidAccessToken,
+    MissingAccessToken,
+    DatabaseError,
+}
+
+impl ApiErrorType for MeError {
+    fn ty(&self) -> &'static str {
+        match self {
+            MeError::InvalidAccessToken => "invalid_access_token",
+            MeError::DatabaseError => "database_error",
+            MeError::MissingAccessToken => "missing_access_token",
+        }
+    }
+
+    fn status(&self) -> rocket::http::Status {
+        match self {
+            MeError::InvalidAccessToken => rocket::http::Status::Unauthorized,
+            MeError::DatabaseError => rocket::http::Status::InternalServerError,
+            MeError::MissingAccessToken => rocket::http::Status::Forbidden,
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            MeError::InvalidAccessToken => "Invalid access token".to_string(),
+            MeError::DatabaseError => "Database error".to_string(),
+            MeError::MissingAccessToken => "Missing access token".to_string(),
+        }
+    }
+}
+
+impl ApiResponse for MeResponse {
+    fn status(&self) -> rocket::http::Status {
+        match self {
+            MeResponse::Ok { .. } => rocket::http::Status::Ok,
+            MeResponse::Error(e) => e.status(),
+        }
+    }
+
+    fn respond(self) -> Result<Self, ApiError> {
+        match self {
+            MeResponse::Ok { .. } => Ok(self),
+            MeResponse::Error(e) => Err(e.into())
+        }
+    }
+}
+
 #[get("/me")]
-pub(crate) async fn me(auth: Authorization, db: Connection<Db>) -> ! {
+pub(crate) async fn me(auth: Option<Authorization>, db: Connection<Db>) -> ApiResponder<MeResponse> {
+    let auth = match auth {
+        Some(a) => a,
+        None => return MeResponse::Error(MeError::MissingAccessToken).into(),
+    };
     let db = DBWrapper::new(db.into_inner());
-    let user = match db.get_user_by_access(&auth.0).await {
+    match db.get_user_by_access(&auth.0).await {
         Ok(u) => match u {
             // user exists and have the right access token
-            Some(u) => u,
-            // access token is invalid or expired
-            None => {},
+            Some(u) => {
+                if u.check_access(&auth.0) {
+                    // access token is valid
+                    log::info!("access token is valid");
+                    MeResponse::Ok { username: u.username }.into()
+                } else {
+                    // access token is expired
+                    log::info!("access token is expired");
+                    MeResponse::Error(MeError::InvalidAccessToken).into()
+                }
+            },
+            // access token is invalid
+            None => {
+                log::info!("access token not in db");
+                MeResponse::Error(MeError::InvalidAccessToken).into()
+            }
         }
-    };
-    Json(user)
+        Err(_) => MeResponse::Error(MeError::DatabaseError).into()
+    }
 }
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum RefreshResponse {
+    Ok { access_token: String },
+    Error(RefreshError),
+}
+
+#[derive(Serialize)]
+pub(crate) enum RefreshError {
+    InvalidRefreshToken,
+    MissingRefreshToken,
+    DatabaseError,
+}
+
+impl ApiErrorType for RefreshError {
+    fn ty(&self) -> &'static str {
+        match self {
+            RefreshError::InvalidRefreshToken => "invalid_refresh_token",
+            RefreshError::DatabaseError => "database_error",
+            RefreshError::MissingRefreshToken => "missing_refresh_token",
+        }
+    }
+
+    fn status(&self) -> rocket::http::Status {
+        match self {
+            RefreshError::InvalidRefreshToken => rocket::http::Status::Unauthorized,
+            RefreshError::DatabaseError => rocket::http::Status::InternalServerError,
+            RefreshError::MissingRefreshToken => rocket::http::Status::Forbidden,
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            RefreshError::InvalidRefreshToken => "Invalid refresh token".to_string(),
+            RefreshError::DatabaseError => "Database error".to_string(),
+            RefreshError::MissingRefreshToken => "Missing refresh token".to_string(),
+        }
+    }
+}
+
+impl ApiResponse for RefreshResponse {
+    fn status(&self) -> rocket::http::Status {
+        match self {
+            RefreshResponse::Ok { .. } => rocket::http::Status::Ok,
+            RefreshResponse::Error(e) => e.status(),
+        }
+    }
+
+    fn respond(self) -> Result<Self, ApiError> {
+        match self {
+            RefreshResponse::Ok { .. } => Ok(self),
+            RefreshResponse::Error(e) => Err(e.into())
+        }
+    }
+}
+
+#[post("/refresh")]
+pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiResponder<RefreshResponse> {
+    let refresh = cookies.get_private("refresh");
+    let db = DBWrapper::new(db.into_inner());
+    match refresh {
+        Some(r) => {
+            match db.get_user_by_refresh(r.value()).await {
+                Ok(u) => match u {
+                    Some(mut u) => {
+                        if u.check_refresh(r.value()) {
+                            let access = u.generate_access();
+                            if let Err(e) = db.update_user(&u).await {
+                                log::error!("{:?}", e);
+                                RefreshResponse::Error(RefreshError::DatabaseError).into()
+                            } else {
+                                RefreshResponse::Ok { access_token: access }.into()
+                            }
+                        } else {
+                            RefreshResponse::Error(RefreshError::InvalidRefreshToken).into()
+                        }
+                    },
+                    None => RefreshResponse::Error(RefreshError::InvalidRefreshToken).into()
+                }
+                Err(e) => {
+                    log::error!("{:?}", e);
+                    RefreshResponse::Error(RefreshError::DatabaseError).into()
+                }
+            }
+        }
+        None => {
+            RefreshResponse::Error(RefreshError::MissingRefreshToken).into()
+        }
+    }
+}
+
+

@@ -52,7 +52,28 @@ impl DBWrapper {
         self
             .database()
             .collection("users")
-            .find_one(doc! {"access_token": access}, None)
+            .find_one(doc! {"access_token.token": access}, None)
+            .await
+    }
+
+    pub(crate) async fn get_user_by_refresh(&self, access: &str) -> Result<Option<User>, mongodb::error::Error> {
+        self
+            .database()
+            .collection("users")
+            .find_one(doc! {"refresh_token.token": access}, None)
+            .await
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) async fn dump_users(&self) -> Result<Vec<User>, mongodb::error::Error> {
+        use rocket::futures::TryStreamExt;
+
+        self
+            .database()
+            .collection("users")
+            .find(None, None)
+            .await?
+            .try_collect()
             .await
     }
 }
