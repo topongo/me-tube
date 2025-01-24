@@ -15,4 +15,5 @@ rocket_db_pools = { version = "0.2.0", features = ["mongodb"] }
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_with = { version = "3.12.0", features = ["chrono"] }
+sha1 = "0.10.6"
 toml = "0.8.19"

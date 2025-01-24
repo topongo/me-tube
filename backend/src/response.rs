@@ -38,6 +38,36 @@ impl<T> From<T> for ApiResponder<T> where T: ApiResponse {
     }
 }
 
+#[derive(Serialize)]
+struct ApiErrorResponder {
+    error: &'static str,
+    message: String,
+    #[serde(skip)]
+    status: Status,
+}
+
+impl ApiResponse for ApiErrorResponder {
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn respond(self) -> Result<Self, ApiError> where Self: Sized {
+        Ok(self)
+    }
+}
+
+impl<T> From<T> for ApiResponder<ApiErrorResponder> where T: ApiErrorType {
+    fn from(value: T) -> Self {
+        Self {
+            inner: ApiErrorResponder {
+                error: value.ty(),
+                message: value.message(),
+                status: value.status(),
+            }
+        }
+    }
+}
+
 impl<'r, 'o: 'r, T> Responder<'r, 'o> for ApiResponder<T> where T: ApiResponse {
     fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
         let mut build = Response::build();

@@ -6,6 +6,7 @@ mod authentication;
 mod response;
 mod user;
 mod config;
+mod video;
 
 use rocket::fs::FileServer;
 use rocket_db_pools::Database;
@@ -28,6 +29,8 @@ fn rocket() -> _ {
             authentication::register,
             authentication::me,
             authentication::refresh,
+        ])
+        .mount("/api/video", routes![
         ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
