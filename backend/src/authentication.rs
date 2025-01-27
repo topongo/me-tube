@@ -5,7 +5,7 @@ use rocket_db_pools::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{DBWrapper, Db};
-use crate::response::{ApiError, ApiErrorType, ApiResponder, ApiResponse};
+use crate::response::{ApiErrorType, ApiResponder, ApiResponse};
 use crate::user::User;
 
 pub(crate) struct Authorization(String);
@@ -35,7 +35,8 @@ impl<'r> FromRequest<'r> for Authorization {
     }
 }
 
-struct UserGuard {
+#[derive(Debug)]
+pub(crate) struct UserGuard {
     user: User,
 }
 
@@ -99,6 +100,12 @@ impl ApiErrorType for AuthenticationError {
     }
 }
 
+impl<T> From<AuthenticationError> for ApiResponder<T> where T: ApiResponse {
+    fn from(e: AuthenticationError) -> Self {
+        ApiResponder::Err(e.into())
+    }
+}
+
 #[derive(Deserialize)]
 pub(crate) struct LoginForm {
     username: String,
@@ -106,12 +113,8 @@ pub(crate) struct LoginForm {
 }
 
 #[derive(Serialize)]
-#[serde(untagged)]
-pub(crate) enum LoginResponse {
-    Ok {
-        access_token: String,
-    },
-    Error(LoginError),
+pub(crate) struct LoginResponse {
+    access_token: String,
 }
 
 #[derive(Serialize)]
@@ -147,22 +150,7 @@ impl ApiErrorType for LoginError {
     }
 }
 
-impl ApiResponse for LoginResponse {
-    fn status(&self) -> rocket::http::Status {
-        match self {
-            LoginResponse::Ok { .. } => rocket::http::Status::Ok,
-            LoginResponse::Error(e) => e.status(),
-        }
-    }
-
-    fn respond(self) -> Result<Self, ApiError> {
-        if let LoginResponse::Error(e) = self {
-            Err(e.into())
-        } else {
-            Ok(self)
-        }
-    }
-}
+impl ApiResponse for LoginResponse {}
 
 #[derive(Deserialize)]
 pub(crate) struct RegisterForm {
@@ -171,11 +159,9 @@ pub(crate) struct RegisterForm {
 }
 
 #[derive(Serialize)]
-#[serde(untagged)]
-pub(crate) enum RegisterResponse {
-    Ok { },
-    Error(RegisterError),
-}
+pub(crate) struct RegisterResponse;
+
+impl ApiResponse for RegisterResponse {}
 
 #[derive(Serialize)]
 pub(crate) enum RegisterError {
@@ -183,23 +169,6 @@ pub(crate) enum RegisterError {
     InvalidPassword,
     InvalidUsername,
     DatabaseError,
-}
-
-impl ApiResponse for RegisterResponse {
-    fn status(&self) -> rocket::http::Status {
-        match self {
-            RegisterResponse::Ok { .. } => rocket::http::Status::Ok,
-            RegisterResponse::Error(e) => e.status(),
-        }
-    }
-
-    fn respond(self) -> Result<Self, ApiError> {
-        if let RegisterResponse::Error(e) = self {
-            Err(e.into())
-        } else {
-            Ok(self)
-        }
-    }
 }
 
 impl ApiErrorType for RegisterError {
@@ -259,21 +228,21 @@ pub(crate) async fn register(form: Json<RegisterForm>, db: Connection<Db>) -> Ap
     match db.get_user(&form.username).await {
         Ok(u) => match u {
             //  username is taken
-            Some(_) => return RegisterResponse::Error(RegisterError::UsernameTaken).into(),
+            Some(_) => return ApiResponder::Err(RegisterError::UsernameTaken.into()),
             None => { /* ok, proceed */ },
         }
         // db error
-        Err(_) => return RegisterResponse::Error(RegisterError::DatabaseError).into()
+        Err(_) => return ApiResponder::Err(RegisterError::DatabaseError.into())
     }
     if let Some(e) = form.validate() {
-        return RegisterResponse::Error(e).into();
+        return ApiResponder::Err(e.into());
     }
     let user: User = form.into();
     if let Err(e) = db.add_user(user).await {
         panic!("{:?}", e)
     }
 
-    RegisterResponse::Ok { }.into()
+    RegisterResponse.into()
 }
 
 #[post("/login", data = "<form>", format = "json")]
@@ -284,15 +253,15 @@ pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: Co
     let mut user = match db.get_user(&form.username).await {
         Ok(u) => match u {
             Some(u) => u,
-            None => return LoginResponse::Error(LoginError::UserNotFound).into(),
+            None => return ApiResponder::Err(LoginError::UserNotFound.into()),
         }
-        Err(_) => return LoginResponse::Error(LoginError::DatabaseError).into()
+        Err(_) => return ApiResponder::Err(LoginError::DatabaseError.into())
     };
 
     if user.verify_password(form.password) {
         let (access, refresh) = user.generate_access_and_refresh();
         if let Err(e) = db.update_user(&user).await {
-            LoginResponse::Error(LoginError::DatabaseError).into()
+            ApiResponder::Err(LoginError::DatabaseError.into())
         } else {
             #[cfg(debug_assertions)]
             {
@@ -301,18 +270,16 @@ pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: Co
                 assert!(user.check_refresh(&refresh));
             }
             cookies.add_private(("refresh", refresh));
-            LoginResponse::Ok { access_token: access }.into()
+            LoginResponse { access_token: access }.into()
         }
     } else {
-        LoginResponse::Error(LoginError::InvalidCredentials).into()
+        ApiResponder::Err(LoginError::InvalidCredentials.into())
     }
 }
 
 #[derive(Serialize)]
-#[serde(untagged)]
-pub(crate) enum MeResponse {
-    Ok { username: String },
-    Error(MeError),
+pub(crate) struct MeResponse {
+    username: String,
 }
 
 #[derive(Serialize)]
@@ -348,21 +315,7 @@ impl ApiErrorType for MeError {
     }
 }
 
-impl ApiResponse for MeResponse {
-    fn status(&self) -> rocket::http::Status {
-        match self {
-            MeResponse::Ok { .. } => rocket::http::Status::Ok,
-            MeResponse::Error(e) => e.status(),
-        }
-    }
-
-    fn respond(self) -> Result<Self, ApiError> {
-        match self {
-            MeResponse::Ok { .. } => Ok(self),
-            MeResponse::Error(e) => Err(e.into())
-        }
-    }
-}
+impl ApiResponse for MeResponse {}
 
 #[get("/me")]
 // pub(crate) async fn me(auth: Option<Authorization>, db: Connection<Db>) -> ApiResponder<MeResponse> {
@@ -397,14 +350,12 @@ impl ApiResponse for MeResponse {
 
 pub(crate) async fn me(user: Result<UserGuard, AuthenticationError>) -> ApiResponder<MeResponse> {
     let user = user?;
-    MeResponse::Ok { username: user.user.username }.into()
+    MeResponse { username: user.user.username }.into()
 }
 
 #[derive(Serialize)]
-#[serde(untagged)]
-pub(crate) enum RefreshResponse {
-    Ok { access_token: String },
-    Error(RefreshError),
+pub(crate) struct RefreshResponse {
+    access_token: String,
 }
 
 #[derive(Serialize)]
@@ -440,21 +391,7 @@ impl ApiErrorType for RefreshError {
     }
 }
 
-impl ApiResponse for RefreshResponse {
-    fn status(&self) -> rocket::http::Status {
-        match self {
-            RefreshResponse::Ok { .. } => rocket::http::Status::Ok,
-            RefreshResponse::Error(e) => e.status(),
-        }
-    }
-
-    fn respond(self) -> Result<Self, ApiError> {
-        match self {
-            RefreshResponse::Ok { .. } => Ok(self),
-            RefreshResponse::Error(e) => Err(e.into())
-        }
-    }
-}
+impl ApiResponse for RefreshResponse {}
 
 #[post("/refresh")]
 pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiResponder<RefreshResponse> {
@@ -469,24 +406,24 @@ pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiR
                             let access = u.generate_access();
                             if let Err(e) = db.update_user(&u).await {
                                 log::error!("{:?}", e);
-                                RefreshResponse::Error(RefreshError::DatabaseError).into()
+                                ApiResponder::Err(RefreshError::DatabaseError.into())
                             } else {
-                                RefreshResponse::Ok { access_token: access }.into()
+                                RefreshResponse { access_token: access }.into()
                             }
                         } else {
-                            RefreshResponse::Error(RefreshError::InvalidRefreshToken).into()
+                            ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
                         }
                     },
-                    None => RefreshResponse::Error(RefreshError::InvalidRefreshToken).into()
+                    None => ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
                 }
                 Err(e) => {
                     log::error!("{:?}", e);
-                    RefreshResponse::Error(RefreshError::DatabaseError).into()
+                    ApiResponder::Err(RefreshError::DatabaseError.into())
                 }
             }
         }
         None => {
-            RefreshResponse::Error(RefreshError::MissingRefreshToken).into()
+            ApiResponder::Err(RefreshError::MissingRefreshToken.into())
         }
     }
 }

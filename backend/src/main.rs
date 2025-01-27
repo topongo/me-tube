@@ -1,3 +1,5 @@
+#![feature(try_trait_v2)]
+
 #[macro_use]
 extern crate rocket;
 
@@ -31,6 +33,7 @@ fn rocket() -> _ {
             authentication::refresh,
         ])
         .mount("/api/video", routes![
+            video::upload,
         ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
