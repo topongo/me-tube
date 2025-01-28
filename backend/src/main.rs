@@ -35,6 +35,7 @@ fn rocket() -> _ {
         ])
         .mount("/api/video", routes![
             video::upload,
+            video::list,
         ])
         .mount("/api/game", routes![
             game::add,
