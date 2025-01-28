@@ -3,7 +3,7 @@ use rocket_db_pools::Database;
 use rocket_db_pools::mongodb::Client;
 use rocket_db_pools::mongodb;
 
-use crate::user::User;
+use crate::response::ApiErrorType;
 
 #[derive(Database)]
 #[database("metube")]
@@ -20,5 +20,19 @@ impl DBWrapper {
 
     pub(crate) fn database(&self) -> mongodb::Database {
         self.0.database(Self::DATABASE)
+    }
+}
+
+impl ApiErrorType for mongodb::error::Error {
+    fn ty(&self) -> &'static str {
+        "database_error"
+    }
+
+    fn message(&self) -> String {
+        format!("{}", self)
+    }
+
+    fn status(&self) -> rocket::http::Status {
+        rocket::http::Status::InternalServerError
     }
 }
