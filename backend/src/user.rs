@@ -27,6 +27,25 @@ pub(crate) struct User {
     password_hash: String,
     access_token: Option<ExpiringToken>,
     refresh_token: Option<ExpiringToken>,
+    permissions: Permissions,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(transparent)]
+pub(crate) struct Permissions {
+    inner: u32,
+}
+
+impl Permissions {
+    pub(crate) const ADMIN: u32 = 1 << 0;
+    pub(crate) const ADD_GAME: u32 = 1 << 1;
+    pub(crate) const ADD_VIDEO: u32 = 1 << 2;
+    pub(crate) const VIEW_VIDEO: u32 = 1 << 3;
+    pub(crate) const VIEW_GAME: u32 = 1 << 4;
+
+    pub(crate) fn new() -> Self {
+        Self { inner: 0 }
+    }
 }
 
 impl User {
@@ -42,6 +61,7 @@ impl User {
             password_hash: Self::password_hash(password),
             access_token: None,
             refresh_token: None,
+            permissions: Permissions::new(),
         }
     }
 
@@ -83,6 +103,11 @@ impl User {
 
     pub(crate) fn generate_access_and_refresh(&mut self) -> (String, String) {
         (self.generate_access(), self.generate_refresh())
+    }
+
+    pub(crate) fn allowed(&self, permission: u32) -> bool {
+        self.permissions.inner & Permissions::ADMIN != 0 ||
+        self.permissions.inner & permission != 0
     }
 }
 
