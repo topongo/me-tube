@@ -72,11 +72,12 @@ impl User {
     }
 
     pub(crate) fn check_access(&self, access_token: &str) -> bool {
+        println!("access token will expire in {:?}", self.access_token.as_ref().map(|t| t.expires - Utc::now()));
         self.access_token.as_ref().map_or(false, |t| t.expires > Utc::now() && t.token == access_token)
     }
 
     pub(crate) fn check_refresh(&self, refresh_token: &str) -> bool {
-        log::debug!("token will expire in {:?}", self.refresh_token.as_ref().map(|t| t.expires - Utc::now()));
+        println!("refresh token will expire in {:?}", self.refresh_token.as_ref().map(|t| t.expires - Utc::now()));
         self.refresh_token.as_ref().map_or(false, |t| t.expires > Utc::now() && t.token == refresh_token)
     }
 
@@ -95,7 +96,7 @@ impl User {
     }
 
     pub(crate) fn generate_refresh(&mut self) -> String {
-        let refresh = Self::generate_expiring_token(CONFIG.access_token_duration);
+        let refresh = Self::generate_expiring_token(CONFIG.refresh_token_duration);
         let r = refresh.token.clone();
         self.refresh_token = Some(refresh);
         r
