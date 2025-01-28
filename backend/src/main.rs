@@ -9,6 +9,7 @@ mod response;
 mod user;
 mod config;
 mod video;
+mod game;
 
 use rocket::fs::FileServer;
 use rocket_db_pools::Database;
@@ -34,6 +35,10 @@ fn rocket() -> _ {
         ])
         .mount("/api/video", routes![
             video::upload,
+        ])
+        .mount("/api/game", routes![
+            game::add,
+            game::list,
         ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
