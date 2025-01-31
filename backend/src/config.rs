@@ -21,6 +21,12 @@ impl MeTube {
     pub(crate) fn check(&self) {
         if !PathBuf::from(&self.video_storage).exists() {
             panic!("Video storage path does not exist");
+        } else {
+            // if upload/thumbs does not exist, create it
+            let thumbs = PathBuf::from(&self.video_storage).join("thumbs");
+            if !thumbs.exists() {
+                std::fs::create_dir_all(thumbs).expect("Failed to create thumbs directory");
+            }
         }
     }
 }
@@ -28,8 +34,6 @@ impl MeTube {
 lazy_static!{
     pub(crate) static ref CONFIG: MeTube = {
         let config = std::fs::read_to_string("MeTube.toml").expect("Failed to read config file");
-        let o: MeTube = toml::from_str(&config).expect("Failed to parse config file");
-        o.check();
-        o
+        toml::from_str(&config).expect("Failed to parse config file")
     };
 }

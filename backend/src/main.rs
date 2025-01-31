@@ -1,3 +1,4 @@
+
 #![feature(try_trait_v2)]
 
 #[macro_use]
@@ -23,7 +24,7 @@ fn index() -> &'static str {
 #[launch]
 fn rocket() -> _ {
     // check if config are initialized
-    let _ = config::CONFIG.access_token_duration;
+    config::CONFIG.check();
 
     rocket::build()
         .mount("/", routes![index])
@@ -36,6 +37,8 @@ fn rocket() -> _ {
         .mount("/api/video", routes![
             video::upload,
             video::list,
+            video::list_file,
+            video::thumb,
         ])
         .mount("/api/game", routes![
             game::add,

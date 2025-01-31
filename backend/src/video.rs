@@ -1,7 +1,9 @@
 use std::{cmp::max_by, collections::HashMap, path::Path};
 
 use rand::Rng;
+use rocket::fs::NamedFile;
 use rocket::futures::{TryStreamExt, StreamExt};
+use rocket::response::Redirect;
 use rocket::{form::Form, fs::TempFile};
 use rocket_db_pools::mongodb;
 use rocket_db_pools::{mongodb::bson::{doc, oid::ObjectId}, Connection};
@@ -94,7 +96,7 @@ impl Video {
     fn random_code() -> String {
         let mut rng = rand::thread_rng();
         // get 6 random chars from CODE_CHARS
-        let code: String = (0..6).map(|_| {
+        let code: String = (0..8).map(|_| {
             let idx = rng.gen_range(0..CODE_CHARS.len());
             CODE_CHARS[idx] as char
         }).collect();
@@ -189,6 +191,7 @@ impl VideoFile {
                 return Err(UploadError::FormatError("uploaded file doens't contain audio either video nor audio streams"));
             }
 
+
             let duration = streams.iter()
                 .map(|s| s.duration.or(s.tags.as_ref().and_then(|t| t.get("DURATION").and_then(|v| v.as_f64()))))
                 .fold(probed.format.duration, |acc, d| {
@@ -200,8 +203,26 @@ impl VideoFile {
                     }
                 });
 
+            let id = ObjectId::new().to_hex();
+            // if there is video then create thumbnail
+            if v_stream.is_some() {
+                let proc = std::process::Command::new("ffmpeg")
+                    .arg("-y")
+                    .arg("-i")
+                    .arg(path)
+                    .arg("-ss")
+                    .arg((duration.unwrap_or(0.0) * 0.2).to_string())
+                    .arg("-frames:v")
+                    .arg("1")
+                    .arg(Path::new(&CONFIG.video_storage).join("thumbs").join(format!("{}.jpg", id)))
+                    .output();
+                if let Err(e) = proc {
+                    log::error!("failed to create thumbnail for video {}: {}", id, e);
+                }
+            }
+
             Ok(VideoFile {
-                id: ObjectId::new().to_hex(),
+                id,
                 duration,
                 size: probed.format.size,
                 audio_codec: a_stream.unwrap_or(AudioCodec::Unk("unknown".to_string())),
@@ -251,6 +272,20 @@ impl DBWrapper {
         };
         self.database()
             .collection::<Video>("videos")
+            .find(d, None)
+            .await?
+            .try_collect()
+            .await
+    }
+
+    pub(crate) async fn get_video_files(&self, ids: Vec<String>) -> Result<Vec<VideoFile>, mongodb::error::Error> {
+        let d= if ids.is_empty() {
+            doc! {}
+        } else {
+            doc! { "_id": { "$in": ids } }
+        };
+        self.database()
+            .collection::<VideoFile>("video_files")
             .find(d, None)
             .await?
             .try_collect()
@@ -378,3 +413,39 @@ pub(crate) async fn list(user: Result<UserGuard, AuthenticationError>, db: Conne
     GetResponse { inner: db.get_videos(vec![]).await.unwrap() }.into()
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct GetFileResponse {
+    inner: Vec<VideoFile>,
+}
+
+impl ApiResponse for GetFileResponse {}
+
+
+#[get("/file")]
+pub(crate) async fn list_file(user: Result<UserGuard, AuthenticationError>, db: Connection<Db>) -> ApiResponder<GetFileResponse> {
+    let user = user?.user;
+    let db = DBWrapper::new(db.into_inner());
+    if !user.allowed(Permissions::VIEW_VIDEO) {
+        return AuthenticationError::InsufficientPermissions.into();
+    }
+    GetFileResponse { inner: db.get_video_files(vec![]).await? }.into()
+}
+
+struct ThumbResponder(Option<NamedFile>);
+
+impl<'r, 'o: 'r> rocket::response::Responder<'r, 'o> for ThumbResponder {
+    fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
+        match self.0 {
+            Some(file) => file.respond_to(request),
+            None => Redirect::to("/static/placeholder.jpg").respond_to(request),
+        }
+    }
+}
+
+#[get("/thumb/<id>")]
+pub(crate) async fn thumb(id: String) -> ThumbResponder {
+    let path = Path::new(&CONFIG.video_storage).join("thumbs").join(format!("{}.jpg", id));
+    let file = if path.exists() { Some(NamedFile::open(path).await.unwrap()) } else { None };
+    ThumbResponder(file)
+}

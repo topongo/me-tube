@@ -16,7 +16,7 @@ pub(crate) enum ApiResponder<T> where T: ApiResponse {
     Err(ApiError),
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub(crate) struct ApiError {
     error: &'static str,
     message: String,
@@ -50,6 +50,7 @@ impl<'r, 'o: 'r, T> Responder<'r, 'o> for ApiResponder<T> where T: ApiResponse {
                 build.merge(Json(inner).respond_to(request)?);
             }
             Self::Err(inner) => {
+                log::warn!("API Error: {:?}", inner);
                 build.status(inner.status);
                 build.merge(Json(inner).respond_to(request)?);
             }
