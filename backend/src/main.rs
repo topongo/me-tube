@@ -12,6 +12,7 @@ mod config;
 mod video;
 mod game;
 mod cors;
+mod media;
 
 use rocket::fs::FileServer;
 use rocket_db_pools::Database;
