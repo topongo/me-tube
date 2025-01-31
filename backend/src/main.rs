@@ -11,6 +11,7 @@ mod user;
 mod config;
 mod video;
 mod game;
+mod cors;
 
 use rocket::fs::FileServer;
 use rocket_db_pools::Database;
@@ -21,6 +22,12 @@ fn index() -> &'static str {
     "MeTube"
 }
 
+#[options("/<_..>")]
+pub fn options() {
+    // CORS support
+    // intentionally empty
+}
+
 #[launch]
 fn rocket() -> _ {
     // check if config are initialized
@@ -28,6 +35,7 @@ fn rocket() -> _ {
 
     rocket::build()
         .mount("/", routes![index])
+        .mount("/api", routes![options])
         .mount("/api/auth", routes![
             authentication::login,
             authentication::register,
@@ -46,6 +54,7 @@ fn rocket() -> _ {
         ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
+        .attach(cors::CORS)
         // .attach(AdHoc::config::<config::MeTube>())
         // .attach(Template::fairing())
 }

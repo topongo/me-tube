@@ -8,7 +8,7 @@ use crate::db::{DBWrapper, Db};
 use crate::response::{ApiErrorType, ApiResponder, ApiResponse};
 use crate::user::User;
 
-pub(crate) struct Authorization(String);
+struct Authorization(String);
 
 impl Authorization {
     pub fn into_inner(self) -> String {
@@ -52,7 +52,7 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard {
         };
         let auth = match request.guard::<Authorization>().await {
             Outcome::Success(auth) => auth,
-            Outcome::Error(_) => return Outcome::Error((rocket::http::Status::Forbidden, Self::Error::MissingAccessToken)),
+            Outcome::Error(_) => return Outcome::Error((rocket::http::Status::Forbidden, Self::Error::InvalidAccessToken)),
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         let db = DBWrapper::new(db.into_inner());
