@@ -1,12 +1,11 @@
 use chrono::{DateTime, TimeDelta, Utc};
-use rocket::State;
-use rocket_db_pools::{mongodb::{self, bson::doc}, Connection};
+use rocket_db_pools::mongodb::{self, bson::doc};
 use serde::{Deserialize, Serialize};
 use rand::{rngs::OsRng, RngCore};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, PasswordHash, password_hash::SaltString};
 
-use crate::{authentication::Authorization, config::CONFIG, db::{DBWrapper, Db}};
+use crate::{config::CONFIG, db::DBWrapper};
 
 fn secure_rnd_string() -> String {
     let mut rng = OsRng;
