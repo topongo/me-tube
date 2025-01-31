@@ -41,6 +41,7 @@ impl Permissions {
     pub(crate) const ADD_VIDEO: u32 = 1 << 2;
     pub(crate) const VIEW_VIDEO: u32 = 1 << 3;
     pub(crate) const VIEW_GAME: u32 = 1 << 4;
+    pub(crate) const READ_MEDIA: u32 = 1 << 5;
 
     pub(crate) fn new() -> Self {
         Self { inner: 0 }

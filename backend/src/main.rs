@@ -53,6 +53,9 @@ fn rocket() -> _ {
             game::add,
             game::list,
         ])
+        .mount("/api/media", routes![
+            media::stream,
+        ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
         .attach(cors::CORS)

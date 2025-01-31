@@ -24,6 +24,16 @@ pub(crate) struct ApiError {
     status: Status,
 }
 
+impl ApiError {
+    pub(crate) fn internal(error: &'static str, message: String) -> Self {
+        Self {
+            error,
+            message,
+            status: Status::InternalServerError,
+        }
+    }
+}
+
 impl<T> From<T> for ApiError where T: ApiErrorType {
     fn from(inner: T) -> Self {
         Self {
