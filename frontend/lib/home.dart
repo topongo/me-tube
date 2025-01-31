@@ -1,7 +1,7 @@
 // home_screen.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:frontend2/user.dart';
+import 'upload.dart';
 import 'package:provider/provider.dart';
 
 import 'auth.dart';
@@ -20,6 +20,12 @@ class HomeScreen extends StatelessWidget {
             onPressed: () async { await auth.logout(); },
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => UploadScreen()));
+        },
+        child: Icon(Icons.upload),
       ),
       body: FutureBuilder(
         future: auth.api("video").then((res) async {
