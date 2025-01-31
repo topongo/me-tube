@@ -9,5 +9,14 @@ services:
       MONGO_INITDB_ROOT_USERNAME: metube
       MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}
 
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+      - ./certs:/etc/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+
 volumes:
   mongodb_data:
