@@ -38,7 +38,16 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    return authService.isAuthenticated ? HomeScreen() : LoginScreen();
+    print("isAuthenticated: ${authService.isAuthenticated}");
+    return Consumer<AuthService>(
+      builder: (context, authService, child) {
+        if (!authService.isAuthenticated) {
+          return LoginScreen();
+        } else {
+          return HomeScreen();
+        }
+      }
+    );
   }
 }
 
