@@ -54,7 +54,7 @@ fn rocket() -> _ {
             game::list,
         ])
         .mount("/api/media", routes![
-            media::stream,
+            media::serve_file,
         ])
         .mount("/static", FileServer::from("static"))
         .attach(db::Db::init())
