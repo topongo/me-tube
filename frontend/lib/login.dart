@@ -25,13 +25,13 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text,
         _passwordController.text,
       );
-      print("login completed");
-    } catch (e) {
+    } catch (e, s) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("$e")),
       );
+      print(e);
+      print(s);
     } finally {
-      setState(() => _isLoading = false);
     }
   }
 

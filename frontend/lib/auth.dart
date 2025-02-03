@@ -2,8 +2,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:frontend2/main.dart';
+import 'package:frontend2/multipart.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:media_kit/media_kit.dart';
@@ -15,11 +17,17 @@ class AuthService with ChangeNotifier {
   String? _accessToken;
   bool _isLoading = false;
   String? _error;
-  late IOClient client;
+  late http.Client client;
   String? username;
 
   // Getters
-  bool get isAuthenticated => _refreshToken != null;
+  bool get isAuthenticated {
+    if (kIsWeb) {
+      return _accessToken != null;
+    } else {
+      return _refreshToken != null;
+    }
+  }
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -29,9 +37,13 @@ class AuthService with ChangeNotifier {
 
   // Initialize from local storage (e.g., token persistence)
   AuthService() {
-    final context = SecurityContext.defaultContext;
-    context.setTrustedCertificatesBytes(certificate);
-    client = IOClient(HttpClient(context: context));
+    if (!kIsWeb) {
+      final context = SecurityContext.defaultContext;
+      context.setTrustedCertificatesBytes(certificate);
+      client = IOClient(HttpClient(context: context));
+    } else {
+      client = http.Client();
+    }
     _loadToken();
   }
 
@@ -39,15 +51,23 @@ class AuthService with ChangeNotifier {
   Future<void> _loadToken() async {
     final prefs = await SharedPreferences.getInstance();
     _refreshToken = prefs.getString('refresh_token');
-    if (_refreshToken != null) {
-      await refreshToken();
+    print("got token: $_refreshToken");
+    if (kIsWeb) {
+      _refreshToken = "ONEhJN/3OVRiKsKNaXDaa6U1KWK8CIzga/QTVh/K5e0=";
     }
+    if (_refreshToken != null) {
+      print("Refresh token is present: refreshing access...");
+      await _refreshAccessToken();
+    } else {
+      print("Refresh token missing: redirect to login");
+    }
+    // print("notifying streams of changes: isAuthenticated: ${await _authStreamController.stream.last} => $isAuthenticated");
     _authStreamController.add(isAuthenticated); // Notify stream
     notifyListeners();
   }
 
-  // Save token to SharedPreferences
   Future<void> _saveToken(String token) async {
+    print("saving token: $token");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('refresh_token', token);
     _refreshToken = token;
@@ -63,16 +83,23 @@ class AuthService with ChangeNotifier {
     _authStreamController.add(false); // Notify unauthenticated
   }
 
-  Future<void> refreshToken() async {
+  Future<void> _refreshAccessToken() async {
     try {
+      final Map<String, String> headers = {
+        'Content-Type': 'application/json',
+      };
+      if (!kIsWeb) {
+        headers['cookie'] = 'refresh=$_refreshToken';
+      }
       final response = await client.post(
         Uri.parse('$baseUrl/auth/refresh'),
-        headers: {'Cookie': 'refresh=$_refreshToken'},
+        headers: headers,
       );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200) {
         _accessToken = data['access_token'];
       } else {
+        print("Refresh failed: ${response.body}");
         _error = 'Refresh failed: ${response.body}';
       }
     } catch (e) {
@@ -83,7 +110,7 @@ class AuthService with ChangeNotifier {
   // Example: Login via API
   Future<void> login(String user, String password) async {
     _isLoading = true;
-    notifyListeners();
+    // notifyListeners();
 
     try {
       final response = await client.post(
@@ -95,10 +122,14 @@ class AuthService with ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _accessToken = data['access_token'];
-        final refresh = response.headers['set-cookie']!.split(';')[0].split('=')[1];
         username = user;
         _error = null;
-        await _saveToken(refresh);
+        if (!kIsWeb) {
+          final refresh = response.headers['set-cookie']!.split(';')[0].split('=')[1];
+          print("saving token: $refresh");
+          await _saveToken(refresh);
+        }
+        notifyListeners();
       } else {
         _error = 'Login failed: ${response.body}';
       }
@@ -106,7 +137,6 @@ class AuthService with ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
     }
   }
 
@@ -134,7 +164,7 @@ class AuthService with ChangeNotifier {
         return data;
       } else if (response.statusCode == 401 && ["invalid_access_token", "expired_access_token", "missing_access_token"].contains(data['error'])) {
         _error = null;
-        await refreshToken();
+        await _refreshAccessToken();
         if(_error != null) {
           await logout();
           throw _error!;
@@ -151,7 +181,34 @@ class AuthService with ChangeNotifier {
   Media getVideo(String video) {
     return Media(
       '$baseUrl/media/$video',
-      httpHeaders: {'authorization': 'Bearer $_accessToken', 'range': 'bytes=0-'},
+      httpHeaders: {'authorization': 'Bearer $_accessToken'},
     );
+  }
+
+  Future<dynamic> uploadVideos(String game, List<PlatformFile> files, Map<String, String> names, Function(int, int) onProgress) async {
+    final request = StreamMultipartRequest(
+      "POST", 
+      Uri.parse("$baseUrl/video/upload"),
+      onProgress: onProgress,
+    );
+    request.fields["game"] = game;
+    for (var i = 0; i < files.length; i++) {
+      request.files.add(http.MultipartFile("files[$i].file", files[i].readStream!, files[i].size));
+      request.fields["files[$i].name"] = names[files[i].name] ?? files[i].name;
+    }
+    // force token refresh: we don't want the request to fail and all the data stream ruined.
+    await _refreshAccessToken();
+    request.headers["authorization"] = "Bearer $_accessToken";
+    final response = await client.send(request);
+    try {
+      final data = jsonDecode(await response.stream.bytesToString());
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        throw data['error'];
+      }
+    } catch (e) {
+      rethrow;
+    }
   }
 }

@@ -16,12 +16,15 @@ class _VideoScreenState extends State<VideoScreen> {
   late Media media;
   late final player = Player();
   late final controller = VideoController(player);
+  bool _loaded = false;
 
   @override
-  void initState() async {
+  void initState() {
     super.initState();
     if (player.platform is libmpvPlayer) {
-      await (player.platform as dynamic).setProperty('tls-cert-file', 'assets/cert.pem');
+      (player.platform as dynamic).setProperty('tls-cert-file', 'assets/cert.pem').then((_) {
+        setState(() => _loaded = true);
+      });
     }
     final auth = Provider.of<AuthService>(context, listen: false);
     final media = auth.getVideo(widget.video);
@@ -33,7 +36,7 @@ class _VideoScreenState extends State<VideoScreen> {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Video(controller: controller);
+          return !_loaded ? const CircularProgressIndicator() : Video(controller: controller);
         }
       )
     );
