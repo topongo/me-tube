@@ -5,6 +5,8 @@ use serde::Serialize;
 
 pub(crate) trait ApiResponse: Serialize {}
 
+impl ApiResponse for () {}
+
 pub(crate) trait ApiErrorType {
     fn ty(&self) -> &'static str;
     fn message(&self) -> String;
@@ -21,7 +23,7 @@ pub(crate) struct ApiError {
     error: &'static str,
     message: String,
     #[serde(skip)]
-    status: Status,
+    pub(crate) status: Status,
 }
 
 impl ApiError {
@@ -30,6 +32,14 @@ impl ApiError {
             error,
             message,
             status: Status::InternalServerError,
+        }
+    }
+
+    pub(crate) fn not_found() -> Self {
+        Self {
+            error: "not_found",
+            message: "The requested resource was not found".to_string(),
+            status: Status::NotFound,
         }
     }
 }
