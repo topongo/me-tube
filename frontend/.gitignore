@@ -33,6 +33,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/linux/flutter/generated*
+/macos/Flutter/Generated*
+/windows/flutter/generated*
 
 # Symbolication related
 app.*.symbols
