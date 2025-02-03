@@ -1,3 +1,5 @@
+use std::fmt::Display;
+use std::path::PathBuf;
 use std::{cmp::max_by, collections::HashMap, path::Path};
 
 use rand::Rng;
@@ -52,6 +54,16 @@ enum Format {
     Unk(String),
 }
 
+impl Display for Format {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mkv => write!(f, "mkv"),
+            Self::Mp4 => write!(f, "mp4"),
+            Self::Unk(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 impl From<&str> for Format {
     fn from(s: &str) -> Self {
         match s {
@@ -64,16 +76,40 @@ impl From<&str> for Format {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum Either<L, R> {
+pub enum Either<L, R> {
     Left(L),
     Right(R),
+}
+
+#[allow(dead_code)]
+impl<L, R> Either<L, R> {
+    pub fn unwrap_left(self) -> L {
+        match self {
+            Self::Left(l) => l,
+            _ => panic!("called `Either::unwrap_left` on a `Right` value"),
+        }
+    }
+
+    pub fn unwrap_right(self) -> R {
+        match self {
+            Self::Right(r) => r,
+            _ => panic!("called `Either::unwrap_right` on a `Left` value"),
+        }
+    }
+
+    pub fn as_ref(&self) -> Either<&L, &R> {
+        match self {
+            Self::Left(l) => Either::Left(l),
+            Self::Right(r) => Either::Right(r),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct Video {
     #[serde(rename = "_id")]
-    id: String,
-    file: Either<String, VideoFile>,
+    pub id: String,
+    pub file: Either<String, VideoFile>,
     name: Option<String>,
     game: String,
 }
@@ -88,6 +124,7 @@ pub(crate) struct VideoFile {
     video_codec: VideoCodec,
     format: Format,
     parent: Option<String>,
+    public: bool,
 }
 
 static CODE_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
@@ -101,6 +138,14 @@ impl Video {
             CODE_CHARS[idx] as char
         }).collect();
         code
+    }
+
+    pub(crate) fn download_name(&self) -> String {
+        let f = self.file.as_ref().unwrap_right();
+        match self.name {
+            Some(ref n) => format!("{}.{}", n, f.format),
+            None => format!("{}.{}", self.id, f.format),
+        }
     }
 }
 
@@ -229,6 +274,7 @@ impl VideoFile {
                 video_codec: v_stream.unwrap_or(VideoCodec::Unk("unknown".to_string())),
                 format: Format::from(probed.format.format_name.as_str()),
                 parent: None,
+                public: true,
             })
         } else {
             let err = String::from_utf8(proc.stderr)
@@ -236,6 +282,10 @@ impl VideoFile {
             println!("{}", err);
             Err(UploadError::ProbeError("ffprobe process"))
         }
+    }
+
+    pub(crate) fn path(&self) -> PathBuf {
+        PathBuf::from(&CONFIG.video_storage).join(&self.id)
     }
 }
 
@@ -291,21 +341,47 @@ impl DBWrapper {
             .try_collect()
             .await
     }
+
+    pub(crate) async fn get_video_resolved(&self, id: &str) -> Result<Option<Video>, mongodb::error::Error> {
+        let res = self.database()
+            .collection::<Video>("videos")
+            .aggregate(vec![
+                doc! { "$match": { "_id": id } },
+                // join with video_files
+                doc! { "$lookup": {
+                    "from": "video_files",
+                    "localField": "file",
+                    "foreignField": "_id",
+                    "as": "file"
+                } },
+                doc! { "$unwind": "$file" },
+            ], None)
+            .await?
+            .map(|v| v.map(|v| { println!("{:?}", v); mongodb::bson::from_document::<Video>(v).unwrap() }))
+            .try_collect::<Vec<Video>>()
+            .await?;
+        Ok(res.into_iter().next())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 struct UploadResponse {
-    inner: Video,
+    inner: Vec<Video>,
 }
 
 impl ApiResponse for UploadResponse {}
 
 #[derive(FromForm, Debug)]
-struct UploadForm<'r> {
+struct FileWrapper<'r> {
     name: Option<String>,
-    game: String,
     file: TempFile<'r>,
+}
+
+#[derive(FromForm, Debug)]
+struct UploadForm<'r> {
+    game: String,
+    files: Vec<FileWrapper<'r>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -358,38 +434,42 @@ pub(crate) async fn upload(mut form: Form<UploadForm<'_>>, user: Result<UserGuar
     if games.is_empty() {
         return ApiResponder::Err(UploadError::GameNotFound.into());
     }
+    let game = form.game.clone();
 
     // TODO: check if user has access to the game
 
     //       get video metadata
-    let file = VideoFile::from_path(form.file.path().unwrap()).await?;
-    println!("{:?}", file);
+    let mut videos = vec![];
+    for file in form.files.iter_mut() {
+        let vfile = VideoFile::from_path(file.file.path().unwrap()).await?;
+        println!("{:?}", vfile);
 
-    //       generate random code: https://github.com/topongo/movieStore/blob/master/video_share/models.py#L25
-    let mut code;
-    //       check if code isn't clashing
-    loop {
-        code = Video::random_code();
-        if db.check_video_code(&code).await? { break }
-        println!("code clashes: {}", code);
+        //       generate random code: https://github.com/topongo/movieStore/blob/master/video_share/models.py#L25
+        let mut code;
+        //       check if code isn't clashing
+        loop {
+            code = Video::random_code();
+            if db.check_video_code(&code).await? { break }
+            println!("code clashes: {}", code);
+        }
+        //       insert video file in db
+        let fid = vfile.id.clone();
+        db.insert_video_file(vfile).await?;
+        //       insert video in db
+        let video = Video {
+            id: code,
+            file: Either::Left(fid.clone()),
+            name: file.name.clone(),
+            game: game.clone(),
+        };
+
+        db.insert_video(&video).await?;
+        //       move file to storage only if everything is successful
+        let target = Path::new(&CONFIG.video_storage).join(&fid);
+        file.file.move_copy_to(target).await.expect("Failed to move file to storage");
+        videos.push(video);
     }
-    //       insert video file in db
-    let fid = file.id.clone();
-    db.insert_video_file(file).await?;
-    //       insert video in db
-    let video = Video {
-        id: code,
-        file: Either::Left(fid),
-        name: form.name.clone(),
-        game: form.game.clone(),
-    };
-
-    db.insert_video(&video).await?;
-    //       move file to storage only if everything is successful
-    let target = Path::new(&CONFIG.video_storage).join(&video.id);
-    form.file.move_copy_to(target).await.expect("Failed to move file to storage");
-
-    UploadResponse { inner: video }.into()
+    UploadResponse { inner: videos }.into()
 }
 
 #[derive(Serialize)]
