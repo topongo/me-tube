@@ -11,10 +11,11 @@ services:
 
   nginx:
     # image: nginx:alpine
-    # build: ./nginx
-    build: ./Dockerfile.nginx
+    build: .
     volumes:
+      - ./nginx:/etc/nginx/conf.d
       - ./certs:/etc/certs:ro
+      - ./backend/static:/static
     ports:
       - "80:80"
       - "443:443"
@@ -23,14 +24,17 @@ services:
     build: ./backend
     environment:
       ROCKET_TEMP_DIR: "/cache"
-      ROCKET_LIMITS: '{data-form="2G",file="2G"}'
+      ROCKET_LIMITS: '{data-form="2147483648",file="2147483648"}'
       ROCKET_SECRET_KEY: ${METUBE_SECRET_KEY:?}
       ROCKET_DATABASES: "{metube={url=\"mongodb://metube:${METUBE_DB_PASSWORD:?}@db\"}}"
       ROCKET_LOG_LEVEL: ${METUBE_ROCKET_LOGLEVEL:-normal}
+      ROCKET_ADDRESS: ${METUBE_HOST:-127.0.0.1}
+      ROCKET_PORT: ${METUBE_PORT:-8000}
     volumes:
       - ${METUBE_UPLOAD:?}:/upload
       - ${METUBE_UPLOAD_CACHE:?}:/cache
       - ./MeTube.toml:/app/MeTube.toml
+      - /mnt/temp:/mnt/temp
 
 volumes:
   mongodb_data:
