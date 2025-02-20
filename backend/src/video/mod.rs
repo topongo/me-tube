@@ -101,24 +101,24 @@ impl Video {
 
 impl DBWrapper {
     pub(crate) async fn check_video_code(&self, code: &str) -> Result<bool, mongodb::error::Error> {
-        Ok(self.database()
-            .collection::<Video>("video_files")
+        Ok(self
+            .collection::<Video>(Self::VIDEO_FILES)
             .find_one(doc! { "id": code }, None)
             .await?
             .is_none())
     }
 
     pub(super) async fn insert_video_file(&self, video: VideoFile) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<VideoFile>("video_files")
+        self
+            .collection::<VideoFile>(Self::VIDEO_FILES)
             .insert_one(video, None)
             .await?;
         Ok(())
     }
 
     pub(crate) async fn insert_video(&self, video: &Video) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<Video>("videos")
+        self
+            .collection::<Video>(Self::VIDEOS)
             .insert_one(video, None)
             .await?;
         Ok(())
@@ -131,8 +131,8 @@ impl DBWrapper {
         } else {
             doc! { "_id": { "$in": ids } }
         };
-        self.database()
-            .collection::<Video>("videos")
+        self
+            .collection::<Video>(Self::VIDEOS)
             .find(d, None)
             .await?
             .try_collect()
@@ -157,13 +157,13 @@ impl DBWrapper {
         if let Some(limit) = limit {
             pipeline.push(doc!{"$limit": limit as i64});
         }
-        let count = self.database()
-            .collection::<Document>("videos")
+        let count = self
+            .collection::<Document>(Self::VIDEOS)
             .count_documents(m, None)
             .await?;
 
-        self.database()
-            .collection::<Document>("videos")
+        self
+            .collection::<Document>(Self::VIDEOS)
             .aggregate(pipeline, None)
             .await?
             .map(|d| d.map(|d| mongodb::bson::from_document::<Video>(d).unwrap()))
@@ -178,8 +178,8 @@ impl DBWrapper {
         } else {
             doc! { "_id": { "$in": ids } }
         };
-        self.database()
-            .collection::<VideoFile>("video_files")
+        self
+            .collection::<VideoFile>(Self::VIDEO_FILES)
             .find(d, None)
             .await?
             .try_collect()
@@ -187,20 +187,20 @@ impl DBWrapper {
     }
 
     pub(crate) async fn get_video(&self, id: &str) -> Result<Option<Video>, mongodb::error::Error> {
-        self.database()
-            .collection::<Video>("videos")
+        self
+            .collection::<Video>(Self::VIDEOS)
             .find_one(doc! { "_id": id }, None)
             .await
     }
 
     pub(crate) async fn get_video_resolved(&self, id: &str) -> Result<Option<Video>, mongodb::error::Error> {
-        let res = self.database()
-            .collection::<Video>("videos")
+        let res = self
+            .collection::<Video>(Self::VIDEOS)
             .aggregate(vec![
                 doc! { "$match": { "_id": id } },
                 // join with video_files
                 doc! { "$lookup": {
-                    "from": "video_files",
+                    "from": Self::VIDEO_FILES,
                     "localField": "file",
                     "foreignField": "_id",
                     "as": "file"
@@ -215,14 +215,14 @@ impl DBWrapper {
     }
 
     pub(super) async fn delete_video(&self, video: &Video) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<Video>("videos")
+        self
+            .collection::<Video>(Self::VIDEOS)
             .delete_one(doc! { "_id": &video.id }, None)
             .await?;
         // delete referenced video file
         self.delete_video_file(&video.file.as_ref().unwrap_right().id).await?;
         // delete referenced likes
-        self.database()
+        self
             .collection::<()>("likes")
             .delete_many(doc! { "video": &video.id }, None)
             .await?;
@@ -230,16 +230,16 @@ impl DBWrapper {
     }
 
     pub(super) async fn delete_video_file(&self, id: &str) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<VideoFile>("video_files")
+        self
+            .collection::<VideoFile>(Self::VIDEO_FILES)
             .delete_one(doc! { "_id": id }, None)
             .await?;
         Ok(())
     }
 
     pub(super) async fn update_video(&self, video: &Video) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<Video>("videos")
+        self
+            .collection::<Video>(Self::VIDEOS)
             .replace_one(doc! { "_id": video.id.clone() }, video, None)
             .await?;
         Ok(())

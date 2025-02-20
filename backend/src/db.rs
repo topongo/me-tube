@@ -17,34 +17,46 @@ pub(crate) struct DBWrapper(Client);
 impl DBWrapper {
     const DATABASE: &'static str = "metube_testing";
 
+    pub(crate) const USERS: &'static str = "users";
+    pub(crate) const VIDEOS: &'static str = "videos";
+    pub(crate) const VIDEO_FILES: &'static str = "video_files";
+    pub(crate) const GAMES: &'static str = "games";
+    pub(crate) const GAME_USERS: &'static str = "game_users";
+    pub(crate) const LIKES: &'static str = "likes";
+    pub(crate) const VIDEO_TOKENS: &'static str = "video_tokens";
+
     fn new(db: Client) -> Self {
         Self(db)
     }
 
     async fn _enforce_constraints(&self) {
         self.database()
-            .collection::<()>("videos")
+            .collection::<()>(Self::VIDEOS)
             .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
             .await.unwrap();
         self.database()
-            .collection::<()>("video_files")
+            .collection::<()>(Self::VIDEO_FILES)
             .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
             .await.unwrap();
         self.database()
-            .collection::<()>("users")
+            .collection::<()>(Self::USERS)
             .create_index(IndexModel::builder().keys(doc! {"username": 1}).build(), None)
             .await.unwrap();
         self.database()
-            .collection::<()>("games")
+            .collection::<()>(Self::GAMES)
             .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
             .await.unwrap();
         self.database()
-            .collection::<()>("game_users")
+            .collection::<()>(Self::GAME_USERS)
             .create_index(IndexModel::builder().keys(doc! {"game": 1, "user": 1}).build(), None)
             .await.unwrap();
     }
 
-    pub(crate) fn database(&self) -> mongodb::Database {
+    pub(crate) fn collection<T>(&self, name: &'static str) -> mongodb::Collection<T> {
+        self.database().collection(name)
+    }
+
+    fn database(&self) -> mongodb::Database {
         self.0.database(Self::DATABASE)
     }
 

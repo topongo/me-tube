@@ -15,8 +15,7 @@ pub(crate) struct Like {
 impl DBWrapper {
     pub(crate) async fn get_user_likes(&self, user: &User) -> Result<Vec<String>, mongodb::error::Error> {
         self
-            .database()
-            .collection::<()>("likes")
+            .collection::<()>(Self::LIKES)
             .aggregate(vec![
                 doc! {"$match": {"user": &user.username}},
                 doc! {"$project": {"video": 1, "_id": 0}},
@@ -35,8 +34,7 @@ impl DBWrapper {
             .map(|v| v.id)
             .collect::<Vec<_>>();
         let likes = self
-            .database()
-            .collection::<()>("likes")
+            .collection::<()>(Self::LIKES)
             .aggregate(vec![
                 doc! {"$match": {"video": {"$in": videos.as_slice()} }},
                 doc! {"$group": {"_id": "$video", "count": {"$sum": 1}}},
@@ -57,8 +55,7 @@ impl DBWrapper {
 
     pub(crate) async fn add_like(&self, user: &User, video: &Video) -> Result<(), mongodb::error::Error> {
         self
-            .database()
-            .collection("likes")
+            .collection(Self::LIKES)
             .replace_one(
                 doc! {"user": &user.username, "video": &video.id},
                 doc! {"user": &user.username, "video": &video.id},
@@ -70,8 +67,7 @@ impl DBWrapper {
 
     pub(crate) async fn remove_like(&self, user: &User, video: &Video) -> Result<(), mongodb::error::Error> {
         self
-            .database()
-            .collection::<()>("likes")
+            .collection::<()>(Self::LIKES)
             .delete_one(doc! {"user": &user.username, "video": &video.id}, None)
             .await
             .map(|_| ())

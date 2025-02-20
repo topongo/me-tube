@@ -174,7 +174,10 @@ impl ApiErrorType for AuthenticationError {
                 #[cfg(debug_assertions)]
                 return format!("Debug error: {:?}", e);
                 #[cfg(not(debug_assertions))]
-                return "Database error".to_string();
+                {
+                    log::error!("{:?}", e);
+                    "Database error".to_string()
+                }
             },
             Self::InsufficientPermissions(p) => format!("Insufficient permissions: {}", Permissions::label(*p)),
             Self::MalformedAccessToken => "Malformed access token".to_string(),

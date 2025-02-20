@@ -21,16 +21,16 @@ impl VideoToken {
 
 impl DBWrapper {
     pub(crate) async fn add_video_token(&self, token: &VideoToken) -> Result<(), mongodb::error::Error> {
-        self.database()
-            .collection::<VideoToken>("video_tokens")
+        self
+            .collection::<VideoToken>(Self::VIDEO_TOKENS)
             .insert_one(token, None)
             .await?;
         Ok(())
     }
 
     pub(crate) async fn get_video_token(&self, token: &str) -> Result<Option<VideoToken>, mongodb::error::Error> {
-        self.database()
-            .collection("video_tokens")
+        self
+            .collection(Self::VIDEO_TOKENS)
             .find_one(doc! {"token.token": token}, None)
             .await
     }

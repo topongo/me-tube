@@ -14,15 +14,12 @@ pub(crate) struct Game {
 }
 
 impl DBWrapper {
-    const GAME_USERS: &'static str = "game_users";
-    const GAMES: &'static str = "games";
-
     pub(crate) async fn add_game(&self, mut game: Game) -> Result<String, mongodb::error::Error> {
         if game.id.is_none() {
             game.id = Some(ObjectId::new().to_hex());
         }
         ObjectId::new();
-        self.database()
+        self
             .collection::<Game>(Self::GAMES)
             .insert_one(&game, None)
             .await
@@ -30,7 +27,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn add_user_to_game(&self, game: &Game, user: &User) -> Result<(), mongodb::error::Error> {
-        self.database()
+        self
             .collection(Self::GAME_USERS)
             .replace_one(
                 doc! {"game": game.id.as_ref().unwrap(), "user": user.username.clone()},
@@ -42,7 +39,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn remove_user_from_game(&self, game: &Game, user: &User) -> Result<(), mongodb::error::Error> {
-        self.database()
+        self
             .collection::<()>(Self::GAME_USERS)
             .delete_one(doc! {"game": game.id.as_ref().unwrap(), "user": user.username.clone()}, None)
             .await
@@ -50,7 +47,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn is_user_in_game(&self, game: &str, user: &str) -> Result<bool, mongodb::error::Error> {
-        self.database()
+        self
             .collection::<()>(Self::GAME_USERS)
             .count_documents(
                 doc! {"game": game, "user": user},
@@ -61,7 +58,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn get_games(&self) -> Result<Vec<Game>, mongodb::error::Error> {
-        self.database()
+        self
             .collection::<Game>(Self::GAMES)
             .find(doc!{}, None)
             .await?
@@ -70,7 +67,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn get_user_games_list(&self, user: &User) -> Result<HashSet<String>, mongodb::error::Error> {
-        self.database()
+        self
             .collection::<Document>(Self::GAME_USERS)
             .find(doc!{"user": &user.username}, None)
             .await?
@@ -80,7 +77,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn get_user_games(&self, user: &User) -> Result<Vec<Game>, mongodb::error::Error> {
-        self.database()
+        self
             .collection::<Document>(Self::GAME_USERS)
             .aggregate(vec![
                 doc!{"$match": {"user": &user.username}},
@@ -100,7 +97,7 @@ impl DBWrapper {
     }
 
     pub(crate) async fn get_game(&self, id: &str) -> Result<Option<Game>, mongodb::error::Error> {
-        self.database()
+        self
             .collection::<Game>(Self::GAMES)
             .find_one(doc!{"_id": id}, None)
             .await

@@ -177,16 +177,14 @@ impl User {
 impl DBWrapper {
     pub(crate) async fn get_user(&self, username: &str) -> Result<Option<User>, mongodb::error::Error> {
         self
-            .database()
-            .collection("users")
+            .collection(Self::USERS)
             .find_one(doc! {"username": username}, None)
             .await
     }
 
     pub(crate) async fn add_user(&self, user: User) -> Result<(), mongodb::error::Error> {
         self
-            .database()
-            .collection("users")
+            .collection(Self::USERS)
             .insert_one(user, None)
             .await?;
         Ok(())
@@ -194,8 +192,7 @@ impl DBWrapper {
 
     pub(crate) async fn update_user(&self, user: &User) -> Result<(), mongodb::error::Error> {
         self
-            .database()
-            .collection::<User>("users")
+            .collection::<User>(Self::USERS)
             .replace_one(doc! {"username": &user.username}, user, None)
             .await?;
         Ok(())
@@ -203,8 +200,7 @@ impl DBWrapper {
 
     pub(crate) async fn delete_user(&self, user: User) -> Result<(), mongodb::error::Error> {
         self
-            .database()
-            .collection::<User>("users")
+            .collection::<User>(Self::USERS)
             .delete_one(doc! {"username": user.username}, None)
             .await?;
         Ok(())
@@ -212,24 +208,21 @@ impl DBWrapper {
 
     pub(crate) async fn get_user_by_access(&self, access: &str) -> Result<Option<User>, mongodb::error::Error> {
         self
-            .database()
-            .collection("users")
+            .collection(Self::USERS)
             .find_one(doc! {"access_token.token": access}, None)
             .await
     }
 
     pub(crate) async fn get_user_by_refresh(&self, access: &str) -> Result<Option<User>, mongodb::error::Error> {
         self
-            .database()
-            .collection("users")
+            .collection(Self::USERS)
             .find_one(doc! {"refresh_token.token": access}, None)
             .await
     }
 
     pub(crate) async fn get_users(&self) -> Result<Vec<User>, mongodb::error::Error>  {
         self
-            .database()
-            .collection::<User>("users")
+            .collection::<User>(Self::USERS)
             .find(None, None)
             .await?
             .try_collect()
