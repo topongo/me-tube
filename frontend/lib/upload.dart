@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import 'auth.dart';
 
 class UploadScreen extends StatefulWidget {
@@ -12,6 +12,7 @@ class UploadScreen extends StatefulWidget {
 class _UploadScreenState extends State<UploadScreen> {
   FilePickerResult? _files;
   final Map<String, String> _names = {};
+  final Map<String, bool> _publics = {};
   final _formKey = GlobalKey<FormState>();
   Map<String, String>? _games;
   String? _game;
@@ -22,7 +23,7 @@ class _UploadScreenState extends State<UploadScreen> {
   initState() {
     super.initState();
     final auth = Provider.of<AuthService>(context, listen: false);
-    auth.api("game").then((value) {
+    auth.api("game/user/${auth.username}").then((value) {
       setState(() {
         _games = {};
         for(final game in value) {
@@ -49,55 +50,71 @@ class _UploadScreenState extends State<UploadScreen> {
                 decoration: InputDecoration(labelText: 'Game'),
                 validator: (value) => value == null ? "Select a Game" : null,
               )),
-              ListView.builder(
-                shrinkWrap: true,
-                itemCount: _files == null ? 0 : _files!.files.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return ListTile(title: const Text("Selected Files"));
-                  } else {
-                    index -= 1;
+              SizedBox(height: 40),
+              Text("Files to be uploaded", style: Theme.of(context).textTheme.titleLarge),
+              Padding(
+                padding: EdgeInsets.only(top: 20, bottom: 20),
+                child: _files == null ? const Text("No files selected") : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _files == null ? 0 : _files!.files.length,
+                  itemBuilder: (context, index) {
+                    final file = _files!.files[index];
+                    return ListTile(
+                      leading: Icon(Icons.play_arrow),
+                      title: TextField(
+                        controller: TextEditingController(text: _names[file.name] ?? file.name),
+                        onChanged: (value) { _names[file.name] = value; },
+                        onEditingComplete: () => setState(() {}),
+                        onTapOutside: (_) => setState(() {}),
+                      ),
+                      subtitle: _names[file.name] == null ? null : Text('Original name: ${file.name}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.delete),
+                            onPressed: () {
+                              setState(() {
+                                _files!.files.removeAt(index);
+                                _names.remove(file.name);
+                                _publics.remove(file.name);
+                              });
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(_publics[file.name]! ? Icons.public : Icons.lock),
+                            onPressed: () {
+                              setState(() {
+                                print("Toggling public for ${file.name} => ${_publics[file.name]}");
+                                _publics[file.name] = !_publics[file.name]!;
+                              });
+                            },
+                          )
+                        ]
+                      )
+                    );
                   }
-                  final file = _files!.files[index];
-                  return ListTile(
-                    leading: Icon(Icons.play_arrow),
-                    title: TextField(
-                      controller: TextEditingController(text: _names[file.name] ?? file.name),
-                      onChanged: (value) { _names[file.name] = value; print(_names); },
-                      onEditingComplete: () => setState(() {}),
-                      onTapOutside: (_) => setState(() {}),
-                    ),
-                    subtitle: _names[file.name] == null ? null : Text('Original name: ${file.name}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.delete),
-                          onPressed: () {
-                            setState(() {
-                              _files!.files.removeAt(index);
-                              _names.remove(file.name);
-                            });
-                          },
-                        )
-                      ]
-                    )
-                  );
-                }
+                ),
               ),
               ElevatedButton(
-                onPressed: () {
-                  FilePicker.platform.pickFiles(allowMultiple: true, withReadStream: true).then((result) {
-                    if (result != null) {
-                      setState(() {
-                        if (_files == null) {
-                          _files = result;
-                        } else {
-                          _files!.files.addAll(result.files);
+                onPressed: () async {
+                  final result = await FilePicker.platform.pickFiles(allowMultiple: true, withReadStream: true, withData: false);
+                  debugPrint("Selected files: $result");
+                  if (result != null) {
+                    setState(() {
+                      if (_files == null) {
+                        _files = result;
+                        for (final f in result.files) {
+                          _publics[f.name] = false;
                         }
-                      });
-                    }
-                  });
+                      } else {
+                        _files!.files.addAll(result.files);
+                        for (final f in result.files) {
+                          _publics[f.name] = false;
+                        }
+                      }
+                    });
+                  }
                 }, 
                 child: Text(_files == null ? 'Select Files' : 'Add Files')
               ),
@@ -134,20 +151,27 @@ class _UploadScreenState extends State<UploadScreen> {
       return;
     }
 
-    setState(() => _uploading = true);
+    setState(() { _uploading = true; _progress = 0; });
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
+      int prev = 0;
       final response = await auth.uploadVideos(
       _game!,
         _files!.files, 
         _names,
+        _publics,
         (bytes, totalBytes) {
-          _progress = bytes / totalBytes;
+          // print("Progress: $bytes / $totalBytes");
+          if (bytes - prev > 1024 * 1024) {
+            setState(() { _progress = bytes / totalBytes; });
+            prev = bytes;
+          }
         }
       );
-      print(response);
+      Navigator.pop(context);
     } finally {
-      setState(() => _uploading = false);
+      setState(() { _uploading = false; _progress = null; });
     }
   }
 }
+

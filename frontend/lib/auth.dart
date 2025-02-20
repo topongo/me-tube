@@ -1,11 +1,11 @@
-// auth_service.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:async/async.dart';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'main.dart';
-import 'multipart.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:media_kit/media_kit.dart';
@@ -19,6 +19,9 @@ class AuthService with ChangeNotifier {
   String? _error;
   late http.Client client;
   String? username;
+  bool? isAdmin;
+  bool? passwordReset;
+  final Map<String, VideoToken> _videoTokens = {};
 
   // Getters
   bool get isAuthenticated {
@@ -63,6 +66,7 @@ class AuthService with ChangeNotifier {
     }
     // print("notifying streams of changes: isAuthenticated: ${await _authStreamController.stream.last} => $isAuthenticated");
     _authStreamController.add(isAuthenticated); // Notify stream
+    await updateUserDetails();
     notifyListeners();
   }
 
@@ -99,39 +103,77 @@ class AuthService with ChangeNotifier {
       if (response.statusCode == 200) {
         _accessToken = data['access_token'];
       } else {
-        print("Refresh failed: ${response.body}");
-        _error = 'Refresh failed: ${response.body}';
+        throw ApiError("refresh_failed", "Failed to refresh access token");
       }
     } catch (e) {
       rethrow;
     }
   }
 
-  // Example: Login via API
+  Future<(dynamic, int, Map<String, String>)> apiRequest(
+    String endpoint, 
+    {
+      String? method,
+      dynamic body,
+      String? query,
+      Map<String, String>? headers,
+    }
+  ) async {
+    final request = http.Request(
+      method ?? "GET",
+      Uri.parse('$baseUrl/$endpoint${query ?? ""}'),
+    );
+    if (headers != null) {
+      for (final entry in headers.entries) {
+        request.headers[entry.key] = entry.value;
+      }
+    }
+    if (body != null) {
+      request.headers['content-type'] = 'application/json';
+      request.body = jsonEncode(body);
+    }
+    try {
+      final response = await client.send(request);
+      final body = await response.stream.bytesToString();
+      if (response.statusCode >= 500) {
+        throw ApiError("server_error", "Server error: ${response.statusCode}");
+      }
+      final data = jsonDecode(body);
+      final headers = response.headers;
+      return (data, response.statusCode, headers);
+    } catch (e, s) {
+      // TODO: add error handling
+      if (e is !ApiError) {
+        print(e);
+        print(s);
+      }
+      rethrow;
+    }
+  }
+
   Future<void> login(String user, String password) async {
     _isLoading = true;
-    // notifyListeners();
 
     try {
-      final response = await client.post(
-        Uri.parse('$baseUrl/auth/login'),
-        body: jsonEncode({'username': user, 'password': password}),
-        headers: {'Content-Type': 'application/json'},
+      final (data, status, headers) = await apiRequest(
+        'auth/login',
+        method: 'POST',
+        body: {
+          'username': user,
+          'password': password,
+        },
       );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (status == 200) {
         _accessToken = data['access_token'];
-        username = user;
-        _error = null;
         if (!kIsWeb) {
-          final refresh = response.headers['set-cookie']!.split(';')[0].split('=')[1];
+          final refresh = headers['set-cookie']!.split(';')[0].split('=')[1];
           print("saving token: $refresh");
           await _saveToken(refresh);
         }
+        await updateUserDetails();
         notifyListeners();
       } else {
-        _error = 'Login failed: ${response.body}';
+        throw ApiError.fromData(data);
       }
     } catch (e) {
       rethrow;
@@ -140,75 +182,172 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  Future<void> resetPassword(String password) async {
+    await api("user/$username", method: 'PATCH', data: {
+      'password': password,
+    });
+    await updateUserDetails();
+    notifyListeners();
+  }
+
+  Future<void> updateUserDetails() async {
+    if (!isAuthenticated) {
+      username = null;
+      isAdmin = null;
+      passwordReset = null;
+    } else {
+      final me = await api("user/me");
+      username = me['username'];
+      isAdmin = me['is_admin'];
+      passwordReset = me['password_reset'];
+    }
+  }
+
   Future<void> register(String email, String password) async {
-    // Similar structure to login()
   }
 
   // Logout
   Future<void> logout() async {
     await _deleteToken();
+    await updateUserDetails();
     notifyListeners();
   }
 
   // Api call wrapper: returns the dynamic data on success or an error on failure
-  Future<dynamic> api(String endpoint, {String? method, dynamic data}) async {
-    final request = http.Request(method ?? "GET", Uri.parse('$baseUrl/$endpoint'));
-    request.headers['content-type'] = "application/json";
-    request.headers['authorization'] = "Bearer $_accessToken";
+  Future<(dynamic, Map<String, String>)> apiAndHeaders(String endpoint, {String? method, dynamic data, String? query}) async {
+    final body = data;
     try {
-      final response = await client.send(request);
-      final body = await response.stream.bytesToString();
-      final data = jsonDecode(body);
-      if (response.statusCode == 200) {
-        _error = null;
-        return data;
-      } else if (response.statusCode == 401 && ["invalid_access_token", "expired_access_token", "missing_access_token"].contains(data['error'])) {
-        _error = null;
-        await _refreshAccessToken();
-        if(_error != null) {
-          await logout();
-          throw _error!;
+      final (data, status, headers) = await apiRequest(
+        endpoint,
+        query: query,
+        method: method,
+        body: body,
+        headers: {
+          'authorization': "Bearer $_accessToken",
+          'content-type': 'application/json',
         }
-        return await api(endpoint, method: method, data: data);
+      );
+      if (status == 200) {
+        return (data, headers);
+      } else if (status == 401 && ["invalid_access_token", "expired_access_token", "missing_access_token"].contains(data['error'])) {
+        try {
+          await _refreshAccessToken();
+        } catch (e) {
+          if (e is ApiError) {
+            if (e.kind == "refresh_failed") {
+              await logout();
+              rethrow;
+            }
+          } else {
+            throw ApiError("refresh_failed", "Failed to refresh access token: $e");
+          }
+        }
+        return await apiAndHeaders(endpoint, method: method, data: body);
+      } else if (status == 401 && data['error'] == "expired_password") {
+        passwordReset = true;
+        notifyListeners();
+        throw ApiError.fromData(data);
       } else {
-        throw 'API error: $data';
+        throw ApiError.fromData(data);
       }
     } catch (e) {
       rethrow;
     }
   }
 
-  Media getVideo(String video) {
+  Future<dynamic> api(String endpoint, {String? method, dynamic data, String? query}) async {
+    final response = await apiAndHeaders(endpoint, method: method, data: data, query: query);
+    return response.$1;
+  }
+
+  Future<Media> getVideo(String video) async {
+    String token;
+    if (!_videoTokens.containsKey(video) || _videoTokens[video]!.expires.isBefore(DateTime.now())) {
+      // get token then return media
+      token = await api("video/$video/token").then((res) {
+        final vtoken = VideoToken(res['token'], DateTime.parse(res['expires']));
+        _videoTokens[video] = vtoken;
+        return vtoken.token;
+      });
+    } else {
+      token = _videoTokens[video]!.token;
+    }
     return Media(
-      '$baseUrl/media/$video',
-      httpHeaders: {'authorization': 'Bearer $_accessToken'},
+      '$baseUrl/media/$token',
     );
   }
 
-  Future<dynamic> uploadVideos(String game, List<PlatformFile> files, Map<String, String> names, Function(int, int) onProgress) async {
-    final request = StreamMultipartRequest(
-      "POST", 
-      Uri.parse("$baseUrl/video/upload"),
-      onProgress: onProgress,
-    );
-    request.fields["game"] = game;
+  Future<dynamic> uploadVideos(String game, List<PlatformFile> files, Map<String, String> names, Map<String, bool> publics, Function(int, int) onProgress) async {
+    final responses = [];
     for (var i = 0; i < files.length; i++) {
-      request.files.add(http.MultipartFile("files[$i].file", files[i].readStream!, files[i].size));
-      request.fields["files[$i].name"] = names[files[i].name] ?? files[i].name;
-    }
-    // force token refresh: we don't want the request to fail and all the data stream ruined.
-    await _refreshAccessToken();
-    request.headers["authorization"] = "Bearer $_accessToken";
-    final response = await client.send(request);
-    try {
-      final data = jsonDecode(await response.stream.bytesToString());
-      if (response.statusCode == 200) {
-        return data;
-      } else {
-        throw data['error'];
+      final form = FormData();
+      form.fields.add(MapEntry("game", game));
+      form.fields.add(MapEntry("files.0.name", names[files[i].name] ?? files[i].name));
+      form.fields.add(MapEntry("files.0.public", (publics[files[i].name] ?? false).toString()));
+      form.files.add(MapEntry(
+        "files.0.file",
+        MultipartFile.fromStream(
+          () => files[i].readStream!,
+          files[i].size,
+          filename: files[i].name,
+        ),
+      ));
+
+      final response = await Dio().post(
+        "$baseUrl/video/upload",
+        data: form,
+        onSendProgress: (int sent, int total) {
+          onProgress(sent, total);
+        },
+        options: Options(
+          headers: {
+            "authorization": "Bearer $_accessToken",
+          }
+        ),
+      );
+      try {
+        final data = response.data;
+        if (response.statusCode == 200) {
+          responses.add(response.data[0]);
+        } else {
+          throw "API Error: ${data['error']}: ${data['message']}";
+        }
+      } catch (e) {
+        rethrow;
       }
-    } catch (e) {
-      rethrow;
+    }
+    return responses;
+  }
+}
+
+class VideoToken {
+  final String token;
+  final DateTime expires;
+
+  const VideoToken(this.token, this.expires);
+}
+
+const int CHUNK_SIZE = 1024 * 1024;
+
+Stream<List<int>> streamWrapper(Stream<List<int>> stream) async* {
+  final ChunkedStreamReader<int> reader = ChunkedStreamReader(stream);
+  while (true) {
+    final chunk = await reader.readChunk(CHUNK_SIZE);
+    yield chunk;
+    if (chunk.length < CHUNK_SIZE) {
+      break;
     }
   }
+}
+
+class ApiError {
+  final String? kind;
+  final String message;
+
+  ApiError(this.kind, this.message);
+
+  factory ApiError.fromData(dynamic data) => ApiError(data['error'], data['message']);
+
+  @override
+  String toString() => message;
 }

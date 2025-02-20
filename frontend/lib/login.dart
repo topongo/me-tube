@@ -25,13 +25,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text,
         _passwordController.text,
       );
-    } catch (e, s) {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("$e")),
       );
-      print(e);
-      print(s);
     } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -51,6 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.text,
                 validator: (value) =>
                     value!.isEmpty ? 'Enter your username' : null,
+                onEditingComplete: _signIn,
+                autofocus: true,
               ),
               TextFormField(
                 controller: _passwordController,
@@ -58,6 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 validator: (value) =>
                     value!.isEmpty ? 'Enter your password' : null,
+                onEditingComplete: _signIn,
               ),
               SizedBox(height: 20),
               _isLoading
