@@ -15,6 +15,7 @@ mod cors;
 mod media;
 mod like;
 
+use rocket::fairing::AdHoc;
 use rocket_db_pools::Database;
 
 
@@ -77,5 +78,6 @@ fn rocket() -> _ {
             video::share::get,
         ])
         .attach(db::Db::init())
+        .attach(AdHoc::try_on_ignite("MeTube db init", |rocket| async { db::DBWrapper::constraints_fairing(rocket).await }))
         .attach(cors::Cors)
 }

@@ -1,4 +1,5 @@
 use rocket::request::FromRequest;
+use rocket::Build;
 use rocket_db_pools::mongodb::bson::doc;
 use rocket_db_pools::{Connection, Database};
 use rocket_db_pools::mongodb::{Client, IndexModel};
@@ -45,6 +46,20 @@ impl DBWrapper {
 
     pub(crate) fn database(&self) -> mongodb::Database {
         self.0.database(Self::DATABASE)
+    }
+
+    pub(crate) async fn constraints_fairing(rocket: rocket::Rocket<Build>) -> rocket::fairing::Result {
+        match Db::fetch(&rocket) {
+            Some(db) => {
+                let db = DBWrapper::new(db.0.clone());
+                db._enforce_constraints().await;
+                Ok(rocket)
+            }
+            None => {
+                eprintln!("Failed to fetch database connection for constraints fairing");
+                Err(rocket)
+            }
+        }
     }
 }
 
