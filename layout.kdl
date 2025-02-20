@@ -1,0 +1,51 @@
+layout {
+  cwd "~/documents/rust/me-tube"
+  default_tab_template {
+    pane size=1 borderless=true {
+      plugin location="zellij:tab-bar"
+    }
+    children
+    pane size=1 borderless=true {
+      plugin location="zellij:status-bar"
+    }
+  }
+  tab name="startup" {
+    pane {
+      command "zsh"
+      args "-c" "if ! systemctl is-active docker; then sudo systemctl start docker && docker compose up -d; fi"
+      focus true
+      // close_on_exit true
+    }
+  }
+  tab name="srv" cwd="backend" {
+    pane command="nvim"
+    pane {
+      command "cargo"
+      args "watch" "-w" "src" "-w" "Rocket.toml" "-w" "MeTube.toml" "-w" "Cargo.toml" "-x" "run"
+      size "20%"
+    }
+  }
+  tab name="cli" cwd="frontend" {
+    pane command="nvim"
+    pane {
+      command "flutter"
+      args "run" "-d" "web-server" "--web-port" "8001" "--web-hostname" "10.6.0.2"
+      size "20%"
+    }
+  }
+  tab name="utils" {
+    pane {
+      command "zsh"
+      args "-c" "docker compose exec -it db mongosh -u metube -p $(cat .env | cut -d= -f2)"
+    }
+  }
+  tab name="docker" {
+    pane {
+      command "nvim"
+      args "docker-compose.yml" "backend/Dockerfile" "Dockerfile"
+    }
+    pane {
+      size "20%"
+    }
+  }
+}
