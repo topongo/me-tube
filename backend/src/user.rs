@@ -8,7 +8,7 @@ use rand::{rngs::OsRng, RngCore};
 use base64::{Engine, prelude::BASE64_URL_SAFE};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, PasswordHash, password_hash::SaltString};
 
-use crate::{authentication::{AuthenticationError, OkExpired, UserGuard}, config::CONFIG, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}};
+use crate::{authentication::{AuthenticationError, IsAdmin, OkExpired, UserGuard}, config::CONFIG, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}};
 
 fn secure_rnd_string() -> String {
     let mut rng = OsRng;
@@ -378,8 +378,9 @@ pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<Us
 }
 
 #[post("/", data = "<form>", format = "json")]
-pub(crate) async fn post(form: Json<PostForm>, /* user: Result<UserGuard<()>, AuthenticationError> ,*/ db: DBWrapper) -> ApiResponder<PostResponse> {
+pub(crate) async fn post(form: Json<PostForm>, user: Result<UserGuard<IsAdmin>, AuthenticationError>,  db: DBWrapper) -> ApiResponder<PostResponse> {
     // check for admin in user guard
+    let _ = user?;
     let PostForm { username, password } = form.into_inner();
     // check if username is taken
     match db.get_user(&username).await {
