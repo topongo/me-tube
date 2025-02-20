@@ -2,7 +2,7 @@ FROM rustlang/rust:nightly-slim AS backend
 
 WORKDIR /back
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml .
 RUN mkdir src && echo "fn main() {println!(\"if you see this, the build broke\")}" > src/main.rs
 RUN cargo build --release
 

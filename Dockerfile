@@ -2,7 +2,7 @@ FROM ghcr.io/cirruslabs/flutter AS frontend
 
 WORKDIR /flutter
 
-COPY frontend/pubspec.yaml frontend/pubspec.lock .
+COPY frontend/pubspec.yaml .
 COPY frontend/web web
 RUN flutter pub get
 COPY frontend/lib lib
