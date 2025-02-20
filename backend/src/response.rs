@@ -1,6 +1,6 @@
 use std::{convert::Infallible, ops::FromResidual};
 
-use rocket::{http::Status, response::Responder, serde::json::Json, Response};
+use rocket::{http::{Header, HeaderMap, Status}, response::Responder, serde::json::Json, Response};
 use serde::Serialize;
 
 pub(crate) trait ApiResponse: Serialize {}
@@ -15,6 +15,7 @@ pub(crate) trait ApiErrorType {
 
 pub(crate) enum ApiResponder<T> where T: ApiResponse {
     Ok(T),
+    OkWithHeaders(T, Vec<(&'static str, String)>),
     Err(ApiError),
 }
 
@@ -69,6 +70,13 @@ impl<'r, 'o: 'r, T> Responder<'r, 'o> for ApiResponder<T> where T: ApiResponse {
                 build.status(rocket::http::Status::Ok);
                 build.merge(Json(inner).respond_to(request)?);
             }
+            Self::OkWithHeaders(inner, headers) => {
+                build.status(rocket::http::Status::Ok);
+                build.merge(Json(inner).respond_to(request)?);
+                for (key, value) in headers {
+                    build.header(Header::new(key, value));
+                }
+            }
             Self::Err(inner) => {
                 log::warn!("API Error: {:?}", inner);
                 build.status(inner.status);
@@ -82,6 +90,12 @@ impl<'r, 'o: 'r, T> Responder<'r, 'o> for ApiResponder<T> where T: ApiResponse {
 impl<E, T> FromResidual<Result<Infallible, E>> for ApiResponder<T> where E: ApiErrorType, T: ApiResponse {
     fn from_residual(residual: Result<Infallible, E>) -> Self {
         Self::Err(residual.map_err(Into::into).unwrap_err())
+    }
+}
+
+impl<T> ApiResponder<T> where T: ApiResponse {
+    pub(crate) fn ok_with_headers(inner: T, headers: Vec<(&'static str, String)>) -> Self {
+        Self::OkWithHeaders(inner, headers)
     }
 }
 

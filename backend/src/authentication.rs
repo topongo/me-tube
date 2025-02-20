@@ -1,12 +1,14 @@
+use std::marker::PhantomData;
+
 use rocket::http::CookieJar;
 use rocket::request::{FromRequest, Outcome};
 use rocket::serde::json::Json;
-use rocket_db_pools::Connection;
+use rocket_db_pools::mongodb;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{DBWrapper, Db};
+use crate::db::DBWrapper;
 use crate::response::{ApiErrorType, ApiResponder, ApiResponse};
-use crate::user::User;
+use crate::user::{Permissions, User};
 
 struct Authorization(String);
 
@@ -18,7 +20,7 @@ impl Authorization {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Authorization {
-    type Error = ();
+    type Error = AuthenticationError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         let auth = request.headers().get_one("Authorization");
@@ -26,28 +28,40 @@ impl<'r> FromRequest<'r> for Authorization {
             Some(auth) => {
                 let auth = auth.split_whitespace().collect::<Vec<&str>>();
                 if auth.len() != 2 || auth[0] != "Bearer" {
-                    return rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    return rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::MalformedAccessToken));
                 }
                 rocket::request::Outcome::Success(Authorization(auth[1].to_string()))
             },
-            None => rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, ()))
+            None => rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::MissingAccessToken))
         }
     }
 }
 
+
+trait UserGuardType {}
+
+impl UserGuardType for () {}
+
+pub(crate) struct OkExpired;
+impl UserGuardType for OkExpired {}
+
+pub(crate) struct IsAdmin;
+impl UserGuardType for IsAdmin {}
+
 #[derive(Debug)]
-pub(crate) struct UserGuard {
+pub(crate) struct UserGuard<T> where T: UserGuardType {
     pub(crate) user: User,
+    _phantom: PhantomData<T>,
 }
 
 #[rocket::async_trait]
-impl<'r> rocket::request::FromRequest<'r> for UserGuard {
+impl<'r> rocket::request::FromRequest<'r> for UserGuard<OkExpired> {
     type Error = AuthenticationError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
-        let db = match request.guard::<Connection<Db>>().await {
+        let db = match request.guard::<DBWrapper>().await {
             Outcome::Success(db) => db,
-            Outcome::Error(e) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::DatabaseError)),
+            Outcome::Error(_) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::InternalServerError)),
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         let auth = match request.guard::<Authorization>().await {
@@ -55,8 +69,8 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard {
             Outcome::Error(_) => return Outcome::Error((rocket::http::Status::Forbidden, Self::Error::InvalidAccessToken)),
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
-        let db = DBWrapper::new(db.into_inner());
         let auth = auth.into_inner();
+        println!("check if access token ({}) is valid...", auth);
         let user = match db.get_user_by_access(&auth).await {
             Ok(u) => match u {
                 Some(u) => {
@@ -68,9 +82,44 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard {
                 },
                 None => return Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::InvalidAccessToken)),
             }
-            Err(e) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::DatabaseError)),
+            Err(e) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::DatabaseError(e))),
         };
-        rocket::request::Outcome::Success(Self { user })
+        rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
+    }
+}
+
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for UserGuard<()> {
+    type Error = AuthenticationError;
+
+    async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
+        let user = match request.guard::<UserGuard<OkExpired>>().await {
+            Outcome::Success(user) => user.user,
+            Outcome::Error(e) => return Outcome::Error(e),
+            Outcome::Forward(f) => return Outcome::Forward(f),
+        };
+        if user.password_reset {
+            return Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::ExpiredPassword));
+        }
+        rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
+    }
+}
+
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for UserGuard<IsAdmin> {
+    type Error = AuthenticationError;
+
+    async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
+        let user = match request.guard::<UserGuard<()>>().await {
+            Outcome::Success(user) => user.user,
+            Outcome::Error(e) => return Outcome::Error(e),
+            Outcome::Forward(f) => return Outcome::Forward(f),
+        };
+        if user.allowed(Permissions::ADMIN) {
+            rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
+        } else {
+            rocket::request::Outcome::Error((rocket::http::Status::Forbidden, Self::Error::InsufficientPermissions(Permissions::ADMIN)))
+        }
     }
 }
 
@@ -79,8 +128,13 @@ pub(crate) enum AuthenticationError {
     InvalidAccessToken,
     ExpiredAccessToken,
     MissingAccessToken,
-    DatabaseError,
-    InsufficientPermissions,
+    #[serde(skip)]
+    DatabaseError(mongodb::error::Error),
+    InsufficientPermissions(u32),
+    GameNotAllowed,
+    MalformedAccessToken,
+    InternalServerError,
+    ExpiredPassword,
 }
 
 impl ApiErrorType for AuthenticationError {
@@ -89,8 +143,12 @@ impl ApiErrorType for AuthenticationError {
             Self::InvalidAccessToken => "invalid_access_token",
             Self::ExpiredAccessToken => "expired_access_token",
             Self::MissingAccessToken => "missing_access_token",
-            Self::DatabaseError => "database_error",
-            Self::InsufficientPermissions => "insufficient_permissions",
+            Self::DatabaseError(..) => "database_error",
+            Self::InsufficientPermissions(..) => "insufficient_permissions",
+            Self::MalformedAccessToken => "malformed_access_token",
+            Self::InternalServerError => "internal_server_error",
+            Self::GameNotAllowed => "game_not_allowed",
+            Self::ExpiredPassword => "expired_password",
         }
     }
 
@@ -99,8 +157,12 @@ impl ApiErrorType for AuthenticationError {
             Self::InvalidAccessToken => rocket::http::Status::Unauthorized,
             Self::ExpiredAccessToken => rocket::http::Status::Unauthorized,
             Self::MissingAccessToken => rocket::http::Status::Forbidden,
-            Self::DatabaseError => rocket::http::Status::InternalServerError,
-            Self::InsufficientPermissions => rocket::http::Status::Forbidden,
+            Self::DatabaseError(..) => rocket::http::Status::InternalServerError,
+            Self::InsufficientPermissions(..) => rocket::http::Status::Forbidden,
+            Self::MalformedAccessToken => rocket::http::Status::Unauthorized,
+            Self::InternalServerError => rocket::http::Status::InternalServerError,
+            Self::ExpiredPassword => rocket::http::Status::Unauthorized,
+            Self::GameNotAllowed => rocket::http::Status::Forbidden,
         }
     }
 
@@ -109,8 +171,17 @@ impl ApiErrorType for AuthenticationError {
             Self::InvalidAccessToken => "Invalid access token".to_string(),
             Self::ExpiredAccessToken => "Expired access token".to_string(),
             Self::MissingAccessToken => "Missing access token".to_string(),
-            Self::DatabaseError => "Database error".to_string(),
-            Self::InsufficientPermissions => "Insufficient permissions".to_string(),
+            Self::DatabaseError(e) => {
+                #[cfg(debug_assertions)]
+                return format!("Debug error: {:?}", e);
+                #[cfg(not(debug_assertions))]
+                return "Database error".to_string();
+            },
+            Self::InsufficientPermissions(p) => format!("Insufficient permissions: {}", Permissions::label(*p)),
+            Self::MalformedAccessToken => "Malformed access token".to_string(),
+            Self::InternalServerError => "Internal server error".to_string(),
+            Self::ExpiredPassword => "Password expired".to_string(),
+            Self::GameNotAllowed => "You are not part of this game".to_string(),
         }
     }
 }
@@ -131,6 +202,8 @@ pub(crate) struct LoginForm {
 pub(crate) struct LoginResponse {
     access_token: String,
 }
+
+impl ApiResponse for LoginResponse {}
 
 #[derive(Serialize)]
 pub(crate) enum LoginError {
@@ -161,100 +234,8 @@ impl ApiErrorType for LoginError {
     }
 }
 
-impl ApiResponse for LoginResponse {}
-
-#[derive(Deserialize)]
-pub(crate) struct RegisterForm {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-pub(crate) struct RegisterResponse;
-
-impl ApiResponse for RegisterResponse {}
-
-#[derive(Serialize)]
-pub(crate) enum RegisterError {
-    UsernameTaken,
-    InvalidPassword,
-    InvalidUsername,
-}
-
-impl ApiErrorType for RegisterError {
-    fn ty(&self) -> &'static str {
-        match self {
-            RegisterError::UsernameTaken => "username_taken",
-            RegisterError::InvalidPassword => "invalid_password",
-            RegisterError::InvalidUsername => "invalid_username",
-        }
-    }
-
-    fn message(&self) -> String {
-        match self {
-            RegisterError::UsernameTaken => "Username taken".to_string(),
-            RegisterError::InvalidPassword => "Invalid password".to_string(),
-            RegisterError::InvalidUsername => "Invalid username".to_string(),
-        }
-    }
-
-    fn status(&self) -> rocket::http::Status {
-        match self {
-            RegisterError::UsernameTaken => rocket::http::Status::Conflict,
-            RegisterError::InvalidPassword => rocket::http::Status::BadRequest,
-            RegisterError::InvalidUsername => rocket::http::Status::BadRequest,
-        }
-    }
-}
-
-impl RegisterForm {
-    fn validate(&self) -> Option<RegisterError> {
-        if self.username.len() < 4 {
-            Some(RegisterError::InvalidUsername)
-        } else if self.password.len() < 8 ||
-            !self.password.chars().any(|c| c.is_uppercase()) ||
-            !self.password.chars().any(|c| c.is_lowercase()) ||
-            !self.password.chars().any(|c| c.is_numeric()) {
-            Some(RegisterError::InvalidPassword)
-        } else {
-            None
-        }
-    }
-}
-
-impl From<RegisterForm> for User {
-    fn from(form: RegisterForm) -> Self {
-        User::new(form.username, form.password)
-    }
-}
-
-#[post("/register", data = "<form>", format = "json")]
-pub(crate) async fn register(form: Json<RegisterForm>, db: Connection<Db>) -> ApiResponder<RegisterResponse> {
-    let form = form.into_inner();
-    let db = DBWrapper::new(db.into_inner());
-    match db.get_user(&form.username).await {
-        Ok(u) => match u {
-            //  username is taken
-            Some(_) => return ApiResponder::Err(RegisterError::UsernameTaken.into()),
-            None => { /* ok, proceed */ },
-        }
-        // db error
-        Err(e) => return ApiResponder::Err(e.into())
-    }
-    if let Some(e) = form.validate() {
-        return ApiResponder::Err(e.into());
-    }
-    let user: User = form.into();
-    if let Err(e) = db.add_user(user).await {
-        panic!("{:?}", e)
-    }
-
-    RegisterResponse.into()
-}
-
 #[post("/login", data = "<form>", format = "json")]
-pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiResponder<LoginResponse> {
-    let db = DBWrapper::new(db.into_inner());
+pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: DBWrapper) -> ApiResponder<LoginResponse> {
     let form = form.into_inner();
 
     let mut user = match db.get_user(&form.username).await {
@@ -284,23 +265,13 @@ pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: Co
     }
 }
 
-#[derive(Serialize)]
-pub(crate) struct MeResponse {
-    username: String,
-}
-
-impl ApiResponse for MeResponse {}
-
-#[get("/me")]
-pub(crate) async fn me(user: Result<UserGuard, AuthenticationError>) -> ApiResponder<MeResponse> {
-    let user = user?;
-    MeResponse { username: user.user.username }.into()
-}
 
 #[derive(Serialize)]
 pub(crate) struct RefreshResponse {
     access_token: String,
 }
+
+impl ApiResponse for RefreshResponse {}
 
 #[derive(Serialize)]
 pub(crate) enum RefreshError {
@@ -331,12 +302,10 @@ impl ApiErrorType for RefreshError {
     }
 }
 
-impl ApiResponse for RefreshResponse {}
-
 #[post("/refresh")]
-pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiResponder<RefreshResponse> {
+pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: DBWrapper) -> ApiResponder<RefreshResponse> {
     let refresh = cookies.get_private("refresh");
-    let db = DBWrapper::new(db.into_inner());
+    println!("got cookie: {:?}", refresh);
     match refresh {
         Some(r) => {
             match db.get_user_by_refresh(r.value()).await {
@@ -348,6 +317,7 @@ pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiR
                                 log::error!("{:?}", e);
                                 ApiResponder::Err(e.into())
                             } else {
+                                cookies.add_private(("refresh", r.value().to_string()));
                                 RefreshResponse { access_token: access }.into()
                             }
                         } else {
@@ -367,5 +337,4 @@ pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: Connection<Db>) -> ApiR
         }
     }
 }
-
 

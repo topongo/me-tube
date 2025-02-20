@@ -1,23 +1,39 @@
+use std::collections::HashMap;
+use lazy_static::lazy_static;
 use chrono::{DateTime, TimeDelta, Utc};
+use rocket::{futures::TryStreamExt, serde::json::Json};
 use rocket_db_pools::mongodb::{self, bson::doc};
 use serde::{Deserialize, Serialize};
 use rand::{rngs::OsRng, RngCore};
-use base64::{Engine, prelude::BASE64_STANDARD};
+use base64::{Engine, prelude::BASE64_URL_SAFE};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, PasswordHash, password_hash::SaltString};
 
-use crate::{config::CONFIG, db::DBWrapper};
+use crate::{authentication::{AuthenticationError, OkExpired, UserGuard}, config::CONFIG, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}};
 
 fn secure_rnd_string() -> String {
     let mut rng = OsRng;
     let mut bytes = [0u8; 32];
     rng.fill_bytes(&mut bytes);
-    BASE64_STANDARD.encode(bytes)
+    BASE64_URL_SAFE.encode(bytes)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct ExpiringToken {
-    token: String,
+    pub(crate) token: String,
     expires: DateTime<Utc>,
+}
+
+impl ExpiringToken {
+    pub(crate) fn new(duration: TimeDelta) -> Self {
+        Self {
+            token: secure_rnd_string(),
+            expires: Utc::now() + duration,
+        }
+    }
+
+    pub(crate) fn valid(&self) -> bool {
+        self.expires > Utc::now()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,7 +42,8 @@ pub(crate) struct User {
     password_hash: String,
     access_token: Option<ExpiringToken>,
     refresh_token: Option<ExpiringToken>,
-    permissions: Permissions,
+    pub permissions: Permissions,
+    pub password_reset: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -35,16 +52,35 @@ pub(crate) struct Permissions {
     inner: u32,
 }
 
+#[allow(dead_code)]
 impl Permissions {
     pub(crate) const ADMIN: u32 = 1 << 0;
     pub(crate) const ADD_GAME: u32 = 1 << 1;
-    pub(crate) const ADD_VIDEO: u32 = 1 << 2;
-    pub(crate) const VIEW_VIDEO: u32 = 1 << 3;
-    pub(crate) const VIEW_GAME: u32 = 1 << 4;
+    pub(crate) const ADD_VIDEOS: u32 = 1 << 2;
+    pub(crate) const VIEW_VIDEOS: u32 = 1 << 3;
+    pub(crate) const VIEW_GAMES: u32 = 1 << 4;
     pub(crate) const READ_MEDIA: u32 = 1 << 5;
+    pub(crate) const WATCH_VIDEO: u32 = 1 << 6;
+    // Modify videos that are not owned by the user.
+    // The modifying user must be part of the game.
+    pub(crate) const MODIFY_VIDEO_OTHERS: u32 = 1 << 7;
 
     pub(crate) fn new() -> Self {
         Self { inner: 0 }
+    }
+
+    pub(crate) fn label(p: u32) -> &'static str {
+        match p {
+            Self::ADMIN => "forbidden",
+            Self::ADD_GAME => "add games",
+            Self::ADD_VIDEOS => "add videos",
+            Self::VIEW_VIDEOS => "view videos",
+            Self::VIEW_GAMES => "view games",
+            Self::READ_MEDIA => "view media",
+            Self::WATCH_VIDEO => "watch videos",
+            Self::MODIFY_VIDEO_OTHERS => "modify videos of others",
+            _ => "unknown",
+        }
     }
 }
 
@@ -55,13 +91,36 @@ impl User {
         argon2.hash_password(password.as_bytes(), &salt).unwrap().to_string()
     }
 
-    pub(crate) fn new(username: String, password: String) -> Self {
+
+    fn validate(username: Option<&str>, password: Option<&str>) -> Option<PostError> {
+        if let Some(username) = username {
+            if username.len() < 4 {
+                return Some(PostError::InvalidUsername);
+            }
+        } 
+        if let Some(password) = password {
+            if password.len() < 8 ||
+                // !password.chars().any(|c| c.is_uppercase()) ||
+                // !password.chars().any(|c| c.is_lowercase()) ||
+                !password.chars().any(|c| c.is_alphanumeric()) ||
+                !password.chars().any(|c| c.is_numeric()) {
+                Some(PostError::InvalidPassword)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn create(username: String, password: String) -> Self {
         Self {
             username,
             password_hash: Self::password_hash(password),
             access_token: None,
             refresh_token: None,
             permissions: Permissions::new(),
+            password_reset: false,
         }
     }
 
@@ -72,13 +131,15 @@ impl User {
     }
 
     pub(crate) fn check_access(&self, access_token: &str) -> bool {
-        println!("access token will expire in {:?}", self.access_token.as_ref().map(|t| t.expires - Utc::now()));
-        self.access_token.as_ref().map_or(false, |t| t.expires > Utc::now() && t.token == access_token)
+        self.access_token
+            .as_ref()
+            .is_some_and(|t| t.valid() && t.token == access_token)
     }
 
     pub(crate) fn check_refresh(&self, refresh_token: &str) -> bool {
-        println!("refresh token will expire in {:?}", self.refresh_token.as_ref().map(|t| t.expires - Utc::now()));
-        self.refresh_token.as_ref().map_or(false, |t| t.expires > Utc::now() && t.token == refresh_token)
+        self.refresh_token
+            .as_ref()
+            .is_some_and(|t| t.valid() && t.token == refresh_token)
     }
 
     pub(crate) fn generate_expiring_token(duration: TimeDelta) -> ExpiringToken {
@@ -107,7 +168,7 @@ impl User {
     }
 
     pub(crate) fn allowed(&self, permission: u32) -> bool {
-        self.permissions.inner & Permissions::ADMIN != 0 ||
+        // self.permissions.inner & Permissions::ADMIN != 0 ||
         self.permissions.inner & permission != 0
     }
 }
@@ -134,7 +195,16 @@ impl DBWrapper {
         self
             .database()
             .collection::<User>("users")
-            .replace_one(doc! {"username": user.username.clone()}, user, None)
+            .replace_one(doc! {"username": &user.username}, user, None)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn delete_user(&self, user: User) -> Result<(), mongodb::error::Error> {
+        self
+            .database()
+            .collection::<User>("users")
+            .delete_one(doc! {"username": user.username}, None)
             .await?;
         Ok(())
     }
@@ -155,13 +225,10 @@ impl DBWrapper {
             .await
     }
 
-    #[cfg(debug_assertions)]
-    pub(crate) async fn dump_users(&self) -> Result<Vec<User>, mongodb::error::Error> {
-        use rocket::futures::TryStreamExt;
-
+    pub(crate) async fn get_users(&self) -> Result<Vec<User>, mongodb::error::Error>  {
         self
             .database()
-            .collection("users")
+            .collection::<User>("users")
             .find(None, None)
             .await?
             .try_collect()
@@ -169,3 +236,219 @@ impl DBWrapper {
     }
 }
 
+#[derive(Serialize)]
+#[serde(remote = "User")]
+struct StrippedUser {
+    username: String,
+    permissions: Permissions,
+}
+
+#[derive(Serialize)]
+struct StrippedUserWrapper(#[serde(with = "StrippedUser")] User);
+
+#[derive(Serialize)]
+#[serde(transparent)]
+pub(crate) struct ListUsersResponse {
+    users: Vec<StrippedUserWrapper>,
+}
+
+impl From<Vec<User>> for ListUsersResponse {
+    fn from(users: Vec<User>) -> Self {
+        ListUsersResponse {
+            users: users.into_iter().map(StrippedUserWrapper).collect(),
+        }
+    }
+}
+
+impl ApiResponse for ListUsersResponse {}
+
+#[get("/")]
+pub(crate) async fn list(user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<ListUsersResponse> {
+    let user = user?.user;
+    if !user.allowed(Permissions::ADMIN) {
+        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
+    } else {
+        match db.get_users().await {
+            Ok(users) => ListUsersResponse::from(users).into(),
+            Err(e) => ApiResponder::Err(e.into())
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(crate) struct MeResponse {
+    username: String,
+    is_admin: bool,
+    password_reset: bool,
+}
+
+impl ApiResponse for MeResponse {}
+
+#[get("/me")]
+pub(crate) async fn me(user: Result<UserGuard<OkExpired>, AuthenticationError>) -> ApiResponder<MeResponse> {
+    let user = user?.user;
+
+    let is_admin = user.allowed(Permissions::ADMIN);
+    let username = user.username;
+    let password_reset = user.password_reset;
+    MeResponse { username, is_admin, password_reset }.into()
+}
+
+
+#[derive(Deserialize)]
+pub(crate) struct PatchForm {
+    password: Option<String>,
+    permissions: Option<Permissions>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PostForm {
+    username: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct PostResponse;
+
+impl ApiResponse for PostResponse {}
+
+#[derive(Serialize)]
+pub(crate) enum PostError {
+    UsernameTaken,
+    InvalidPassword,
+    InvalidUsername,
+    UserNotFound,
+}
+
+impl ApiErrorType for PostError {
+    fn ty(&self) -> &'static str {
+        match self {
+            PostError::UsernameTaken => "username_taken",
+            PostError::InvalidPassword => "invalid_password",
+            PostError::InvalidUsername => "invalid_username",
+            PostError::UserNotFound => "user_not_found",
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            PostError::UsernameTaken => "Username taken".to_string(),
+            PostError::InvalidPassword => "Invalid password".to_string(),
+            PostError::InvalidUsername => "Invalid username".to_string(),
+            PostError::UserNotFound => "User not found".to_string(),
+        }
+    }
+
+    fn status(&self) -> rocket::http::Status {
+        match self {
+            PostError::UsernameTaken => rocket::http::Status::Conflict,
+            PostError::InvalidPassword => rocket::http::Status::BadRequest,
+            PostError::InvalidUsername => rocket::http::Status::BadRequest,
+            PostError::UserNotFound => rocket::http::Status::NotFound,
+        }
+    }
+}
+
+#[patch("/<username>", data = "<form>", format = "json")]
+pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<UserGuard<OkExpired>, AuthenticationError>, db: DBWrapper) -> ApiResponder<PostResponse> {
+    let PatchForm { password, permissions } = form.into_inner();
+    // is user authenticated?
+    let user = user?.user;
+    // does target user exist?
+    let target_user = db.get_user(username).await?;
+    if target_user.is_none() {
+        ApiResponder::Err(PostError::UserNotFound.into())
+    } else {
+        let mut target_user = target_user.unwrap();
+        // modify permissions only if logged user is admin
+        if !user.allowed(Permissions::ADMIN) && permissions.is_some() {
+            return ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into());
+        } else {
+            target_user.permissions = permissions.unwrap_or(target_user.permissions);
+        }
+        // modify other fields only if logged user is admin or target_user is self
+        if user.allowed(Permissions::ADMIN) || user.username == target_user.username {
+            if let Some(e) = User::validate(None, password.as_deref()) {
+                return ApiResponder::Err(e.into());
+            }
+            if let Some(password) = password {
+                target_user.password_hash = User::password_hash(password);
+                target_user.password_reset = false;
+            }
+            db.update_user(&target_user).await?;
+            PostResponse.into()
+        } else {
+            ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
+        }
+    }
+}
+
+#[post("/", data = "<form>", format = "json")]
+pub(crate) async fn post(form: Json<PostForm>, /* user: Result<UserGuard<()>, AuthenticationError> ,*/ db: DBWrapper) -> ApiResponder<PostResponse> {
+    // check for admin in user guard
+    let PostForm { username, password } = form.into_inner();
+    // check if username is taken
+    match db.get_user(&username).await {
+        Ok(u) => if let Some(_) = u {
+            return ApiResponder::Err(PostError::UsernameTaken.into());
+        }
+        // db error
+        Err(e) => return ApiResponder::Err(e.into())
+    }
+    // check if username and password are valid
+    if let Some(e) = User::validate(Some(&username), Some(&password)) {
+        return ApiResponder::Err(e.into());
+    }
+    let user = User::create(username.to_string(), password);
+    if let Err(e) = db.add_user(user).await {
+        panic!("{:?}", e)
+    }
+
+    PostResponse.into()
+}
+
+#[delete("/<username>")]
+pub(crate) async fn delete(username: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<PostResponse> {
+    let user = user?.user;
+    if !user.allowed(Permissions::ADMIN) {
+        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
+    } else {
+        match db.get_user(username).await {
+            Ok(Some(_)) => {
+                db.delete_user(user).await?;
+                PostResponse.into()
+            }
+            Ok(None) => ApiResponder::Err(PostError::UserNotFound.into()),
+            Err(e) => ApiResponder::Err(e.into())
+        }
+    }
+}
+
+
+lazy_static!(
+    static ref TABLE: HashMap<&'static str, u32> = HashMap::from([
+        ("admin", Permissions::ADMIN),
+        ("add_game", Permissions::ADD_GAME),
+        ("add_video", Permissions::ADD_VIDEOS),
+        ("view_video", Permissions::VIEW_VIDEOS),
+        ("view_game", Permissions::VIEW_GAMES),
+        ("read_media", Permissions::READ_MEDIA),
+        ("watch_video", Permissions::WATCH_VIDEO),
+    ]);
+);
+
+#[derive(Serialize)]
+#[serde(transparent)]
+pub(crate) struct PermissionsResponse(&'static HashMap<&'static str, u32>);
+
+impl ApiResponse for PermissionsResponse {}
+
+#[get("/permissions")]
+pub(crate) async fn permissions(user: Result<UserGuard<()>, AuthenticationError>) -> ApiResponder<PermissionsResponse> {
+    let user = user?.user;
+    if !user.allowed(Permissions::ADMIN) {
+        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
+    } else {
+        PermissionsResponse(&TABLE).into()
+    }
+}

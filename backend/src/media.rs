@@ -1,11 +1,10 @@
 use std::io::SeekFrom;
 
 use rocket::{futures::Stream, http::ContentType, request::{FromRequest, Outcome}, response::{stream::{stream, ByteStream}, Responder}, serde::json::Json, tokio::io::{AsyncReadExt, AsyncSeekExt}, Response};
-use rocket_db_pools::Connection;
 use rocket::tokio::fs::File;
 use serde::Serialize;
 
-use crate::{authentication::{AuthenticationError, UserGuard}, config::CONFIG, db::{DBWrapper, Db}, response::{ApiError, ApiResponder, ApiResponse}, user::Permissions};
+use crate::{db::DBWrapper, response::{ApiError, ApiResponder}, video::Video};
 
 // struct RangedResponder {
 //     file: Path,
@@ -20,7 +19,7 @@ use crate::{authentication::{AuthenticationError, UserGuard}, config::CONFIG, db
 // }
 
 #[derive(Debug)]
-struct Range {
+pub(crate) struct Range {
     start: Option<u64>,
     end: Option<u64>,
 }
@@ -28,10 +27,10 @@ struct Range {
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(Debug)]
-enum RangeError {
-    InvalidRange,
-    InvalidStart,
-    InvalidEnd,
+pub(crate) enum RangeError {
+    Format,
+    Start,
+    End,
 }
 
 #[async_trait]
@@ -47,18 +46,18 @@ impl<'r> FromRequest<'r> for Range {
 
         let head = head.split('=').collect::<Vec<&str>>();
         if head.len() != 2 || head[0] != "bytes" {
-            return r(RangeError::InvalidRange);
+            return r(RangeError::Format);
         }
         let ends = head[1].split('-').collect::<Vec<&str>>();
         if ends.len() != 2 {
-            return r(RangeError::InvalidRange);
+            return r(RangeError::Format);
         }
         let start = if ends[0].is_empty() {
             None
         } else {
             match ends[0].parse::<u64>() {
                 Ok(s) => Some(s),
-                Err(_) => return r(RangeError::InvalidStart),
+                Err(_) => return r(RangeError::Start),
             }
         };
         let end = if ends[1].is_empty() {
@@ -66,7 +65,7 @@ impl<'r> FromRequest<'r> for Range {
         } else {
             match ends[1].parse::<u64>() {
                 Ok(e) => Some(e),
-                Err(_) => return r(RangeError::InvalidEnd),
+                Err(_) => return r(RangeError::End),
             }
         };
         Outcome::Success(Range { start, end })
@@ -75,7 +74,7 @@ impl<'r> FromRequest<'r> for Range {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-enum StreamError {
+pub(crate) enum StreamError {
     ApiError(ApiError),
     RangeError(RangeError),
     NotFound,
@@ -109,7 +108,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for StreamError {
 
 const CHUNK_SIZE: u64 = 1 << 20;
 
-struct MediaStream {
+pub(crate) struct MediaStream {
     range: Option<Range>,
     len: u64,
     file: rocket::tokio::fs::File,
@@ -123,6 +122,30 @@ struct MediaStream {
 // }
 
 impl MediaStream {
+    pub(crate) async fn from_video(range: Option<Range>, video: Video) -> Result<Self, StreamError> {
+        let name = video.download_name();
+        let file = File::open(video.file.unwrap_right().path()).await.map_err(|e| StreamError::ApiError(e.into()))?; 
+        let flen = file.metadata().await.map(|m| m.len()).map_err(|e| StreamError::ApiError(e.into()))?;
+        if let Some(ref range) = range {
+            if let Some(ref start) = range.start {
+                if *start >= flen {
+                    return Err(StreamError::RangeError(RangeError::Start));
+                }
+            }
+            if let Some(ref end) = range.end {
+                if *end >= flen {
+                    return Err(StreamError::RangeError(RangeError::End));
+                }
+            }
+        }
+        Ok(Self {
+            range,
+            len: flen,
+            file,
+            name,
+        })
+    }
+
     fn gen_stream(mut self) -> ByteStream<impl Stream<Item = Vec<u8>>> {
         let (mut pos, end) = match self.range {
             Some(r) => (r.start.unwrap_or(0u64), r.end.unwrap_or(self.len - 1) + 1),
@@ -162,68 +185,47 @@ impl<'r> Responder<'r, 'r> for MediaStream {
         res
             .header(rocket::http::Header::new("Accept-Ranges", "bytes"));
 
-        let (length, ty) = match self.range {
+        let ty = ContentType::from_extension(self.name.split('.').next_back().unwrap_or_default()).unwrap_or(ContentType::Binary);
+        let length = match self.range {
             Some(ref r) => {
                 res
-                    .header(rocket::http::Header::new("Content-Range", format!("bytes {}-{}/{}", r.start.unwrap_or(0), r.end.unwrap_or(self.len), self.len)));
-                (r.end.unwrap_or(self.len - 1) - r.start.unwrap_or(0) + 1, ContentType::Binary)
+                    .header(rocket::http::Header::new("Content-Range", format!("bytes {}-{}/{}", r.start.unwrap_or(0), r.end.unwrap_or(self.len - 1), self.len)));
+                r.end.unwrap_or(self.len - 1) - r.start.unwrap_or(0) + 1
             }
-            None => {
-                (self.len, ContentType::from_extension(self.name.split('.').next_back().unwrap_or_default()).unwrap_or(ContentType::Binary))
-            }
+            None => self.len,
+        };
+        let status = if self.range.is_some() {
+            rocket::http::Status::PartialContent
+        } else {
+            rocket::http::Status::Ok
         };
         res
-            .header(rocket::http::Header::new("Content-Length", length.to_string()))
             .header(rocket::http::Header::new("Content-Disposition", format!("inline; filename=\"{}\"", self.name)))
             .merge(self.gen_stream().respond_to(request)?)
+            .header(rocket::http::Header::new("Content-Length", length.to_string()))
+            .status(status)
             .header(ty)
             .ok()
     }
 }
 
 
-#[get("/<id>")]
-    pub async fn serve_file<'r>(
-        id: &'r str,
+#[get("/<token>")]
+    pub async fn serve_file(
+        token: &str,
         range: Option<Range>, 
-        db: Connection<Db>) 
-    -> Result<MediaStream, StreamError> 
-    {
-    // println!("streaming media");
-    // let user = user.map_err(|e| StreamError::ApiError(e.into()))?.user;
-    // println!("user is logged in");
-    // if !user.allowed(Permissions::READ_MEDIA) {
-    //     println!("user hasn't permission to read media");
-    //     return Err(StreamError::ApiError(ApiError::internal("permission_error", "You don't have permission to read media".to_string())));
-    // }
-    // println!("user is logged and has access");
-    println!("user selected the current range: {:?}", range);
-    let db = DBWrapper::new(db.into_inner());
-    let video = db.get_video_resolved(id).await.map_err(|e| StreamError::ApiError(e.into()))?.ok_or(StreamError::NotFound)?;
-    let name = video.download_name();
-    let file = File::open(video.file.unwrap_right().path()).await.map_err(|e| StreamError::ApiError(e.into()))?;
-    // println!("file opened");
-    let flen = file.metadata().await.map(|m| m.len()).map_err(|e| StreamError::ApiError(e.into()))?;
-    // println!("file is {} bytes long", flen);
-    if let Some(ref range) = range {
-        if let Some(ref start) = range.start {
-            if *start >= flen {
-                return Err(StreamError::RangeError(RangeError::InvalidStart));
-            }
-        }
-        if let Some(ref end) = range.end {
-            if *end >= flen {
-                return Err(StreamError::RangeError(RangeError::InvalidEnd));
-            }
-        }
-    }
+        db: DBWrapper
+    ) -> Result<MediaStream, StreamError> {
+    let t = match db.get_video_token(token).await.map_err(|e| StreamError::ApiError(e.into()))? {
+        // Some(t) => if !t.token.valid()&& false {
+        Some(t) => if false {
+            warn!("token is invalid: {:?}", t);
+            return Err(StreamError::NotFound);
+        } else { t },
+        None => return Err(StreamError::NotFound),
+    };
+    let video = db.get_video_resolved(&t.video).await.map_err(|e| StreamError::ApiError(e.into()))?.ok_or(StreamError::NotFound)?;
 
-    // println!("starting streamed response");
-    // println!("start: {}, end: {}", start, end);
-    Ok(MediaStream {
-        range,
-        len: flen,
-        file,
-        name,
-    })
+    MediaStream::from_video(range, video).await
 }
+
