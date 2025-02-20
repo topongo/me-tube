@@ -15,6 +15,15 @@ pub(crate) struct MeTube {
     #[serde_as(as = "DurationSeconds<f64>")]
     pub(crate) refresh_token_duration: TimeDelta,
     pub(crate) video_storage: String,
+    pub(crate) cors: CorsConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct CorsConfig {
+    pub(crate) allowed_origins: Vec<String>,
+    pub(crate) allowed_methods: Vec<String>,
+    pub(crate) allowed_headers: Vec<String>,
+    // pub(crate) allow_credentials: bool,
 }
 
 impl MeTube {

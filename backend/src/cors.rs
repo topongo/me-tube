@@ -1,7 +1,7 @@
 use rocket::http::Header;
 use rocket::{Request, Response};
 use rocket::fairing::{Fairing, Info, Kind};
-// use bruss_config::CONFIGS;
+use crate::config::{CorsConfig, CONFIG};
 
 pub struct Cors;
 
@@ -16,21 +16,22 @@ impl Fairing for Cors {
 
     async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
         // make code crash if request is made in production
-        // if let Some(ref origin) = CONFIGS.api.cors_allowed_origin {
-        //     response.set_header(Header::new("Access-Control-Allow-Origin", origin));
-        // }
-        // if let Some(ref methods) = CONFIGS.api.cors_allowed_methods {
-        //     response.set_header(Header::new("Access-Control-Allow-Methods", methods.join(", ")));
-        // }
-        // if let Some(ref headers) = CONFIGS.api.cors_allowed_headers {
-        //     response.set_header(Header::new("Access-Control-Allow-Headers", headers.join(", ")));
-        // }
-        // if let Some(ref credentials) = CONFIGS.api.cors_allow_credentials {
+        let CorsConfig { ref allowed_origins, ref allowed_methods, ref allowed_headers } = CONFIG.cors;
+        if allowed_origins.is_empty() {
+            response.set_header(Header::new("Access-Control-Allow-Origin", allowed_origins.join(", ")));
+        }
+        if !allowed_methods.is_empty() {
+            response.set_header(Header::new("Access-Control-Allow-Methods", allowed_methods.join(", ")));
+        }
+        if !allowed_headers.is_empty() {
+            response.set_header(Header::new("Access-Control-Allow-Headers", allowed_headers.join(", ")));
+        }
+        // if !allow_credentials.is_empty() {
         //     response.set_header(Header::new("Access-Control-Allow-Credentials", credentials.to_string()));
         // }
-        response.set_header(Header::new("Access-Control-Allow-Origin", "http://127.0.0.1:8001"));
-        response.set_header(Header::new("Access-Control-Allow-Methods", "GET, POST"));
-        response.set_header(Header::new("Access-Control-Allow-Headers", "content-type, authorization, set-cookie"));
+        // response.set_header(Header::new("Access-Control-Allow-Origin", "http://127.0.0.1:8001"));
+        // response.set_header(Header::new("Access-Control-Allow-Methods", "GET, POST"));
+        // response.set_header(Header::new("Access-Control-Allow-Headers", "content-type, authorization, set-cookie"));
         // response.set_header(Header::new("Access-Control-Allow-Credentials", credentials.to_string()));
     }
 }
