@@ -46,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               TextFormField(
                 controller: _usernameController,
+                autofillHints: [AutofillHints.username],
                 decoration: InputDecoration(labelText: 'Username'),
                 keyboardType: TextInputType.text,
                 validator: (value) =>
@@ -55,6 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               TextFormField(
                 controller: _passwordController,
+                autofillHints: [AutofillHints.password],
                 decoration: InputDecoration(labelText: 'Password'),
                 obscureText: true,
                 validator: (value) =>

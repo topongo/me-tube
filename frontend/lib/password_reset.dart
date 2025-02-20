@@ -46,6 +46,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
             children: [
               TextFormField(
                 controller: _passwordController,
+                autofillHints: [AutofillHints.password],
                 decoration: InputDecoration(labelText: 'New Password'),
                 obscureText: true,
                 validator: (value) {
@@ -57,6 +58,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
               ),
               TextFormField(
                 controller: _confirmPasswordController,
+                autofillHints: [AutofillHints.password],
                 decoration: InputDecoration(labelText: 'Confirm Password'),
                 obscureText: true,
                 validator: (value) {
