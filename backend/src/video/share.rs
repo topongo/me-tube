@@ -2,7 +2,7 @@ use rocket::{http::Status, response::Responder};
 
 use crate::{db::DBWrapper, media::{MediaStream, Range, StreamError}};
 
-enum ShareResponder {
+pub(crate) enum ShareResponder {
     InternalError,
     NotFound,
     Ok(Result<MediaStream, StreamError>),

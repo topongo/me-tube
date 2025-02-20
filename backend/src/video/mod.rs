@@ -124,6 +124,7 @@ impl DBWrapper {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn get_videos(&self, ids: Vec<String>) -> Result<Vec<Video>, mongodb::error::Error> {
         let d= if ids.is_empty() {
             doc! {}
@@ -165,7 +166,7 @@ impl DBWrapper {
             .collection::<Document>("videos")
             .aggregate(pipeline, None)
             .await?
-            .map(|d| {println!("{:?}", d); d.map(|d| mongodb::bson::from_document::<Video>(d).unwrap()) })
+            .map(|d| d.map(|d| mongodb::bson::from_document::<Video>(d).unwrap()))
             .try_collect()
             .await
             .map(|v| (count as usize, v))
@@ -207,7 +208,7 @@ impl DBWrapper {
                 doc! { "$unwind": "$file" },
             ], None)
             .await?
-            .map(|v| v.map(|v| { println!("{:?}", v); mongodb::bson::from_document::<Video>(v).unwrap() }))
+            .map(|v| v.map(|v| mongodb::bson::from_document::<Video>(v).unwrap() ))
             .try_collect::<Vec<Video>>()
             .await?;
         Ok(res.into_iter().next())

@@ -168,6 +168,7 @@ impl User {
     }
 
     pub(crate) fn allowed(&self, permission: u32) -> bool {
+        // TODO: uncomment this for superpowerss
         // self.permissions.inner & Permissions::ADMIN != 0 ||
         self.permissions.inner & permission != 0
     }
@@ -389,7 +390,7 @@ pub(crate) async fn post(form: Json<PostForm>, /* user: Result<UserGuard<()>, Au
     let PostForm { username, password } = form.into_inner();
     // check if username is taken
     match db.get_user(&username).await {
-        Ok(u) => if let Some(_) = u {
+        Ok(u) => if u.is_some() {
             return ApiResponder::Err(PostError::UsernameTaken.into());
         }
         // db error

@@ -88,3 +88,4 @@ impl<'r> FromRequest<'r> for DBWrapper {
         rocket::request::Outcome::Success(db)
     }
 }
+

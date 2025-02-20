@@ -79,12 +79,6 @@ impl DBWrapper {
 }
 
 #[derive(Serialize)]
-#[serde(transparent)]
-pub(crate) struct ListResponse(HashMap<String, u16>);
-
-impl ApiResponse for ListResponse {}
-
-#[derive(Serialize)]
 #[serde(untagged)]
 pub(crate) enum LikeError {
     VideoNotFound,

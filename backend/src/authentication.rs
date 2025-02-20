@@ -38,7 +38,7 @@ impl<'r> FromRequest<'r> for Authorization {
 }
 
 
-trait UserGuardType {}
+pub(crate) trait UserGuardType {}
 
 impl UserGuardType for () {}
 
@@ -70,7 +70,6 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<OkExpired> {
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         let auth = auth.into_inner();
-        println!("check if access token ({}) is valid...", auth);
         let user = match db.get_user_by_access(&auth).await {
             Ok(u) => match u {
                 Some(u) => {
@@ -305,7 +304,6 @@ impl ApiErrorType for RefreshError {
 #[post("/refresh")]
 pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: DBWrapper) -> ApiResponder<RefreshResponse> {
     let refresh = cookies.get_private("refresh");
-    println!("got cookie: {:?}", refresh);
     match refresh {
         Some(r) => {
             match db.get_user_by_refresh(r.value()).await {

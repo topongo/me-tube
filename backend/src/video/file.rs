@@ -131,7 +131,6 @@ pub(crate) struct VideoFile {
 
 impl VideoFile {
     pub(super) async fn from_path(path: &Path) -> Result<VideoFile, UploadError> {
-        println!("{:?}", path);
         let proc = std::process::Command::new("ffprobe")
             .arg("-v")
             .arg("quiet")
@@ -145,7 +144,6 @@ impl VideoFile {
         if proc.status.success() {
             let probed = String::from_utf8(proc.stdout)
                 .map_err(|_| UploadError::ProbeError("ffprobe output format"))?;
-            println!("{}", probed);
 
             #[derive(Deserialize)]
             struct Probed {
@@ -222,7 +220,7 @@ impl VideoFile {
         } else {
             let err = String::from_utf8(proc.stderr)
                 .expect("format error on ffprobe output");
-            println!("{}", err);
+            log::warn!("{}", err);
             Err(UploadError::ProbeError("ffprobe process"))
         }
     }

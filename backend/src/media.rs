@@ -158,22 +158,16 @@ impl MediaStream {
                 self.file.seek(SeekFrom::Start(pos)).await.unwrap();
             }
             loop {
-                // println!("pos: {}, till end: {}", pos, end - pos);
                 if pos + CHUNK_SIZE > end {
-                    // println!("allocating last buffer of size {}", (end - pos) as usize);
                     let mut last_buf = vec![0; (end - pos) as usize];
-                    // println!("reading {} bytes", last_buf.len());
-                    println!("read {} bytes in total", pos + last_buf.len() as u64);
                     self.file.read_exact(&mut last_buf).await.unwrap();
                     yield last_buf;
                     break;
                 } else {
-                    // println!("reading {} bytes", buf.len());
                     pos += CHUNK_SIZE;
                     self.file.read_exact(&mut buf).await.unwrap();
                     yield buf.clone();
                 }
-                // println!("after reading chunk => pos: {}, till end: {}", pos, end - pos);
             }
         })
     }
