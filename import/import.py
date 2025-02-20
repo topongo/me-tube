@@ -4,7 +4,23 @@ import json
 from pymongo import MongoClient
 from bson import ObjectId
 from pathlib import Path
+from shutil import copy
 from argparse import ArgumentParser, FileType
+
+
+def db_insert(db, to_insert):
+    if not args.skip_db_clean:
+        for coll in to_insert:
+            if not args.dry_run:
+                db[coll].delete_many({})
+
+    for coll, data in to_insert.items():
+        data = list(data)
+        print(f"Inserting {len(data)} documents into {coll}")
+        if not args.dry_run:
+            db[coll].insert_many(data)
+    if args.dry_run:
+        print("==> DRY RUN: not inserting into db")
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -17,6 +33,11 @@ if __name__ == "__main__":
     parser.add_argument("--link-files", action="store_true", help="Link files from --from to --target")
     parser.add_argument("--copy-files", action="store_true", help="Copy files from --from to --target")
     parser.add_argument("--skip-existing-check", action="store_true", help="Skip check when creating db, checks will be made anyway before copying or linking")
+    parser.add_argument("--db-insert-only", type=FileType('r'), help="Json file to push into db. When specified, all other actions are skipped")
+    parser.add_argument("--dump-before-insert", type=Path, help="Dump the data before inserting into db")
+    parser.add_argument("--dry-run", action="store_true", help="Do not actually insert into db")
+    parser.add_argument("--skip-db-clean", action="store_true", help="Do not clean the database before inserting")
+
     args = parser.parse_args()
 
     if args.yes is None or not args.yes:
@@ -32,6 +53,11 @@ if __name__ == "__main__":
     mongo_url = rocket_config["default"]["databases"]["metube"]["url"]
     client = MongoClient(mongo_url)
     db = client[args.db]
+
+    if args.db_insert_only:
+        to_insert = json.load(args.db_insert_only)
+        db_insert(db, to_insert)
+        exit(0)
     
     with args.data as f:
         data = json.load(f)
@@ -161,26 +187,30 @@ if __name__ == "__main__":
 
     videos = {}
     video_files = {}
-    to_copy = []
-    to_link = []
+    to_copy: list[tuple[Path, Path]] = []
+    to_link: list[tuple[Path, Path]] = []
     converted_associated = {}
     fnf = 0
+
+    def get_thumb(thumb: Path, video_id: str) -> tuple[Path, Path]:
+        return (args.frm / thumb).resolve(), args.target / "thumbs" / video_id
+
     for pk, v in converted_videos.items():
         print("Processing converted_video", pk)
         try:
             id_vf, vf, code, vid, thumb = parse_video(v)
             # videos[code] = v
             video_files[id_vf] = vf
-            lfile = ((args.frm / v["file"]).resolve(), args.target / id_vf)
-            lthumb = None if thumb is None else ((args.frm / thumb).resolve(), args.target / "thumbs" / id_vf)
+            lfile: tuple[Path, Path] = ((args.frm / v["file"]).resolve(), args.target / id_vf)
+
             if args.link_files:
                 to_link.append(lfile)
                 if thumb is not None:
-                    to_link.append(lthumb)
+                    to_link.append(get_thumb(thumb, id_vf))
             elif args.copy_files:
                 to_copy.append(lfile)
                 if thumb is not None:
-                    to_copy.append(lthumb)
+                    to_copy.append(get_thumb(thumb, id_vf))
 
             converted_associated[pk] = id_vf
         except FileNotFoundError as e:
@@ -198,15 +228,14 @@ if __name__ == "__main__":
         video_files[id_vf] = vf
         videos[code] = vid
         lfile = ((args.frm / v["file"]).resolve(), args.target / id_vf)
-        lthumb = None if thumb is None else ((args.frm / thumb).resolve(), args.target / "thumbs" / id_vf)
         if args.link_files:
             to_link.append(lfile)
             if thumb is not None:
-                to_link.append(lthumb)
+                to_link.append(get_thumb(thumb, id_vf))
         elif args.copy_files:
             to_copy.append(lfile)
             if thumb is not None:
-                to_copy.append(lthumb)
+                to_copy.append(get_thumb(thumb, id_vf))
 
     for src, dst in to_link:
         assert src.exists()
@@ -217,16 +246,19 @@ if __name__ == "__main__":
     for src, dst in to_copy:
         assert src.exists()
         dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
         print("Copied", src, "to", dst)
 
-    for i in ("games", "game_users", "video_files", "videos"):
-        db[i].drop()
+    to_insert = {
+        "games": games.values(),
+        "game_users": game_users,
+        "video_files": video_files.values(),
+        "videos": videos.values(),
+    }
 
-    db["games"].insert_many(games.values())
-    db["game_users"].insert_many(game_users)
-    db["video_files"].insert_many(video_files.values())
-    db["videos"].insert_many(videos.values())
+    if args.dump_before_insert:
+        json.dump({k: list(v) for k, v in to_insert.items()}, open(args.dump_before_insert, "w"))
+
+    db_insert(db, to_insert)
 
 
 # ok data:
