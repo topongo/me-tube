@@ -230,15 +230,18 @@ class _VideoCardState extends State<VideoCard> {
                 Text(widget.video['likes'].toString())
               ]
             ),
-            widget.video['public'] ? Container() : IconButton(
-              icon: Icon(Icons.share),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: "https://metube.prabo.org/share/${widget.video['_id']}"));
-              }
-            ),
             IconButton(
               icon: Icon(widget.video['public'] ? Icons.public : Icons.lock),
               onPressed: () async => await _updateVideo('public', !widget.video['public'], context, dontPop: true),
+            ),
+            !widget.video['public'] ? Container() : IconButton(
+              icon: Icon(Icons.share),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: "https://metube.prabo.org/share/${widget.video['_id']}"));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Link copied to clipboard")));
+                }
+              }
             ),
             IconButton(
               icon: Icon(Icons.edit),
