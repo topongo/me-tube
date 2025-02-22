@@ -3,7 +3,7 @@ FROM rustlang/rust:nightly-slim AS backend
 WORKDIR /back
 
 COPY Cargo.toml .
-RUN mkdir src && touch src/lib.rs
+RUN mkdir -p src/bin && touch src/lib.rs && touch src/bin/admin.rs && echo "fn main() { println!(\"if you see this, the build broke\") }" > src/bin/main.rs
 RUN cargo build --release
 
 COPY src src
