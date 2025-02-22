@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from os import getenv
 import toml
 import json
 from pymongo import MongoClient
@@ -27,8 +28,8 @@ if __name__ == "__main__":
     parser.add_argument("--from", type=Path, dest="frm", required=True, help="Path to the folder that contains videos to import")
     parser.add_argument("--target", type=Path, required=True, help="Target in which the backend take videos from")
     parser.add_argument("--data", type=FileType('r'), required=True, help="Path to json file dumped from Django")
-    parser.add_argument("--rocket-config", type=Path, required=True, help="Path to Rocket.toml file")
     parser.add_argument("--db", type=str, required=True, help="Name of database to import to")
+    parser.add_argument("--rocket-config", type=Path, help="Path to Rocket.toml file")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
     parser.add_argument("--link-files", action="store_true", help="Link files from --from to --target")
     parser.add_argument("--copy-files", action="store_true", help="Copy files from --from to --target")
@@ -48,9 +49,15 @@ if __name__ == "__main__":
         print("Cannot use both --link-files and --copy-files")
         exit(1)
 
-    rocket_config = toml.load(args.rocket_config)
+    if getenv("MONGO_URL", "") != "":
+        mongo_url = getenv("MONGO_URL", "")
+    elif args.rocket_config is not None:
+        rocket_config = toml.load(args.rocket_config)
+        mongo_url = rocket_config["default"]["databases"]["metube"]["url"]
+    else:
+        print("Either --rocker-config must be set or MONGO_URL env var must be set")
+        exit(1)
 
-    mongo_url = rocket_config["default"]["databases"]["metube"]["url"]
     client = MongoClient(mongo_url)
     db = client[args.db]
 
