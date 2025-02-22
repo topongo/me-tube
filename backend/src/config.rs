@@ -9,13 +9,14 @@ use serde_with::DurationSeconds;
 #[serde_as]    
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
-pub(crate) struct MeTube {
+pub struct MeTube {
     #[serde_as(as = "DurationSeconds<f64>")]
     pub(crate) access_token_duration: TimeDelta,
     #[serde_as(as = "DurationSeconds<f64>")]
     pub(crate) refresh_token_duration: TimeDelta,
     pub(crate) video_storage: String,
     pub(crate) cors: CorsConfig,
+    pub database: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,7 +42,7 @@ impl MeTube {
 }
 
 lazy_static!{
-    pub(crate) static ref CONFIG: MeTube = {
+    pub static ref CONFIG: MeTube = {
         let config = std::fs::read_to_string("MeTube.toml").expect("Failed to read config file");
         toml::from_str(&config).expect("Failed to parse config file")
     };

@@ -123,7 +123,7 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<IsAdmin> {
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) enum AuthenticationError {
+pub enum AuthenticationError {
     InvalidAccessToken,
     ExpiredAccessToken,
     MissingAccessToken,

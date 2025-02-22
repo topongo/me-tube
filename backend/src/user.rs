@@ -37,33 +37,52 @@ impl ExpiringToken {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct User {
+pub struct User {
     pub username: String,
     password_hash: String,
     access_token: Option<ExpiringToken>,
     refresh_token: Option<ExpiringToken>,
-    pub permissions: Permissions,
-    pub password_reset: bool,
+    permissions: Permissions,
+    pub(crate) password_reset: bool,
 }
+
+#[derive(Debug)]
+pub enum ValidationError {
+    InvalidUsername,
+    InvalidPassword,
+    UsernameTaken,
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationError::InvalidUsername => write!(f, "Invalid username"),
+            ValidationError::InvalidPassword => write!(f, "Invalid password"),
+            ValidationError::UsernameTaken => write!(f, "Username taken"),
+        }
+    }
+}
+
+impl std::error::Error for ValidationError {}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub(crate) struct Permissions {
+pub struct Permissions {
     inner: u32,
 }
 
 #[allow(dead_code)]
 impl Permissions {
-    pub(crate) const ADMIN: u32 = 1 << 0;
-    pub(crate) const ADD_GAME: u32 = 1 << 1;
-    pub(crate) const ADD_VIDEOS: u32 = 1 << 2;
-    pub(crate) const VIEW_VIDEOS: u32 = 1 << 3;
-    pub(crate) const VIEW_GAMES: u32 = 1 << 4;
-    pub(crate) const READ_MEDIA: u32 = 1 << 5;
-    pub(crate) const WATCH_VIDEO: u32 = 1 << 6;
+    pub const ADMIN: u32 = 1 << 0;
+    pub const ADD_GAME: u32 = 1 << 1;
+    pub const ADD_VIDEOS: u32 = 1 << 2;
+    pub const VIEW_VIDEOS: u32 = 1 << 3;
+    pub const VIEW_GAMES: u32 = 1 << 4;
+    pub const READ_MEDIA: u32 = 1 << 5;
+    pub const WATCH_VIDEO: u32 = 1 << 6;
     // Modify videos that are not owned by the user.
     // The modifying user must be part of the game.
-    pub(crate) const MODIFY_VIDEO_OTHERS: u32 = 1 << 7;
+    pub const MODIFY_VIDEO_OTHERS: u32 = 1 << 7;
 
     pub(crate) fn new() -> Self {
         Self { inner: 0 }
@@ -82,6 +101,10 @@ impl Permissions {
             _ => "unknown",
         }
     }
+
+    pub fn push(&mut self, permission: u32) {
+        self.inner |= permission;
+    }
 }
 
 impl User {
@@ -92,10 +115,10 @@ impl User {
     }
 
 
-    fn validate(username: Option<&str>, password: Option<&str>) -> Option<PostError> {
+    pub fn validate(username: Option<&str>, password: Option<&str>) -> Option<ValidationError> {
         if let Some(username) = username {
             if username.len() < 4 {
-                return Some(PostError::InvalidUsername);
+                return Some(ValidationError::InvalidUsername);
             }
         } 
         if let Some(password) = password {
@@ -104,7 +127,7 @@ impl User {
                 // !password.chars().any(|c| c.is_lowercase()) ||
                 !password.chars().any(|c| c.is_alphanumeric()) ||
                 !password.chars().any(|c| c.is_numeric()) {
-                Some(PostError::InvalidPassword)
+                Some(ValidationError::InvalidPassword)
             } else {
                 None
             }
@@ -113,7 +136,7 @@ impl User {
         }
     }
 
-    pub(crate) fn create(username: String, password: String) -> Self {
+    pub fn create(username: String, password: String) -> Self {
         Self {
             username,
             password_hash: Self::password_hash(password),
@@ -122,6 +145,10 @@ impl User {
             permissions: Permissions::new(),
             password_reset: false,
         }
+    }
+
+    pub fn push_permissions(&mut self, permission: u32) {
+        self.permissions.push(permission);
     }
 
     pub(crate) fn verify_password(&self, password: String) -> bool {
@@ -175,14 +202,14 @@ impl User {
 }
 
 impl DBWrapper {
-    pub(crate) async fn get_user(&self, username: &str) -> Result<Option<User>, mongodb::error::Error> {
+    pub async fn get_user(&self, username: &str) -> Result<Option<User>, mongodb::error::Error> {
         self
             .collection(Self::USERS)
             .find_one(doc! {"username": username}, None)
             .await
     }
 
-    pub(crate) async fn add_user(&self, user: User) -> Result<(), mongodb::error::Error> {
+    pub async fn add_user(&self, user: User) -> Result<(), mongodb::error::Error> {
         self
             .collection(Self::USERS)
             .insert_one(user, None)
@@ -314,6 +341,16 @@ pub(crate) enum PostError {
     UserNotFound,
 }
 
+impl From<ValidationError> for PostError {
+    fn from(e: ValidationError) -> Self {
+        match e {
+            ValidationError::InvalidUsername => PostError::InvalidUsername,
+            ValidationError::InvalidPassword => PostError::InvalidPassword,
+            ValidationError::UsernameTaken => PostError::UsernameTaken,
+        }
+    }
+}
+
 impl ApiErrorType for PostError {
     fn ty(&self) -> &'static str {
         match self {
@@ -363,7 +400,7 @@ pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<Us
         // modify other fields only if logged user is admin or target_user is self
         if user.allowed(Permissions::ADMIN) || user.username == target_user.username {
             if let Some(e) = User::validate(None, password.as_deref()) {
-                return ApiResponder::Err(e.into());
+                return ApiResponder::Err(PostError::from(e).into());
             }
             if let Some(password) = password {
                 target_user.password_hash = User::password_hash(password);
@@ -392,7 +429,7 @@ pub(crate) async fn post(form: Json<PostForm>, user: Result<UserGuard<IsAdmin>, 
     }
     // check if username and password are valid
     if let Some(e) = User::validate(Some(&username), Some(&password)) {
-        return ApiResponder::Err(e.into());
+        return ApiResponder::Err(PostError::from(e).into());
     }
     let user = User::create(username.to_string(), password);
     if let Err(e) = db.add_user(user).await {

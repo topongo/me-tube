@@ -6,26 +6,25 @@ use rocket_db_pools::mongodb::{Client, IndexModel};
 use rocket_db_pools::mongodb;
 
 use crate::authentication::AuthenticationError;
+use crate::config::CONFIG;
 use crate::response::ApiErrorType;
 
 #[derive(Database)]
 #[database("metube")]
 pub struct Db(Client);
 
-pub(crate) struct DBWrapper(Client);
+pub struct DBWrapper(Client);
 
 impl DBWrapper {
-    const DATABASE: &'static str = "metube_testing";
+    pub const USERS: &'static str = "users";
+    pub const VIDEOS: &'static str = "videos";
+    pub const VIDEO_FILES: &'static str = "video_files";
+    pub const GAMES: &'static str = "games";
+    pub const GAME_USERS: &'static str = "game_users";
+    pub const LIKES: &'static str = "likes";
+    pub const VIDEO_TOKENS: &'static str = "video_tokens";
 
-    pub(crate) const USERS: &'static str = "users";
-    pub(crate) const VIDEOS: &'static str = "videos";
-    pub(crate) const VIDEO_FILES: &'static str = "video_files";
-    pub(crate) const GAMES: &'static str = "games";
-    pub(crate) const GAME_USERS: &'static str = "game_users";
-    pub(crate) const LIKES: &'static str = "likes";
-    pub(crate) const VIDEO_TOKENS: &'static str = "video_tokens";
-
-    fn new(db: Client) -> Self {
+    pub fn new(db: Client) -> Self {
         Self(db)
     }
 
@@ -56,8 +55,8 @@ impl DBWrapper {
         self.database().collection(name)
     }
 
-    fn database(&self) -> mongodb::Database {
-        self.0.database(Self::DATABASE)
+    pub fn database(&self) -> mongodb::Database {
+        self.0.database(CONFIG.database.as_str())
     }
 
     pub(crate) async fn constraints_fairing(rocket: rocket::Rocket<Build>) -> rocket::fairing::Result {

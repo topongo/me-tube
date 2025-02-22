@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate rocket;
 
-mod db;
+pub mod db;
 mod authentication;
 mod response;
 mod user;
@@ -14,6 +14,9 @@ mod game;
 mod cors;
 mod media;
 mod like;
+
+pub use config::CONFIG;
+pub use user::{User, Permissions};
 
 use rocket::fairing::AdHoc;
 use rocket_db_pools::Database;
@@ -30,8 +33,7 @@ pub fn options() {
     // intentionally empty
 }
 
-#[launch]
-fn rocket() -> _ {
+pub fn rocket() -> rocket::Rocket<rocket::Build> {
     // check if config are initialized
     config::CONFIG.check();
     rocket::build()
