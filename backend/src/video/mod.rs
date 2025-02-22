@@ -409,7 +409,7 @@ impl<'r, 'o: 'r> rocket::response::Responder<'r, 'o> for ThumbResponder {
     fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
         match self.0 {
             Some(file) => file.respond_to(request),
-            None => Redirect::to("/static/placeholder.jpg").respond_to(request),
+            None => Redirect::to("/static/placeholder.png").respond_to(request),
         }
     }
 }
