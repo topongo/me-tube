@@ -1,4 +1,4 @@
-FROM rustlang/rust:nightly-alpine AS backend
+FROM rustlang/rust:nightly-slim AS backend
 
 WORKDIR /back
 
