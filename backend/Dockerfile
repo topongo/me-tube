@@ -18,6 +18,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt update && apt install tini
 
 COPY --from=backend /back/target/release/me-tube /usr/local/bin/me-tube
+COPY --from=backend /back/target/release/me-tube-admin /usr/local/bin/me-tube-admin
 
 WORKDIR /app
 
