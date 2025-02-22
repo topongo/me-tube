@@ -3,11 +3,11 @@ FROM rustlang/rust:nightly-slim AS backend
 WORKDIR /back
 
 COPY Cargo.toml .
-RUN mkdir src && echo "fn main() {println!(\"if you see this, the build broke\")}" > src/main.rs
+RUN mkdir src && touch src/lib.rs
 RUN cargo build --release
 
 COPY src src
-RUN touch src/main.rs
+RUN touch src/lib.rs
 RUN cargo build --release
 
 FROM debian:bookworm-slim AS runtime
