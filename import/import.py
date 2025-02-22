@@ -200,7 +200,7 @@ if __name__ == "__main__":
     fnf = 0
 
     def get_thumb(thumb: Path, video_id: str) -> tuple[Path, Path]:
-        return (args.frm / thumb).resolve(), args.target / "thumbs" / video_id
+        return (args.frm / thumb).resolve(), args.target / "thumbs" / f"{video_id}.jpg"
 
     for pk, v in converted_videos.items():
         print("Processing converted_video", pk)
@@ -253,6 +253,7 @@ if __name__ == "__main__":
     for src, dst in to_copy:
         assert src.exists()
         dst.parent.mkdir(parents=True, exist_ok=True)
+        copy(src, dst)
         print("Copied", src, "to", dst)
 
     to_insert = {
