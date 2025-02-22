@@ -195,8 +195,7 @@ impl User {
     }
 
     pub(crate) fn allowed(&self, permission: u32) -> bool {
-        // TODO: uncomment this for superpowerss
-        // self.permissions.inner & Permissions::ADMIN != 0 ||
+        self.permissions.inner & Permissions::ADMIN != 0 ||
         self.permissions.inner & permission != 0
     }
 }
