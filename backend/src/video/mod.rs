@@ -322,35 +322,35 @@ impl ApiErrorType for UploadError {
 #[post("/upload", data = "<form>")]
 pub(crate) async fn upload(mut form: Form<UploadForm<'_>>, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<UploadResponse> {
     let user = user?.user;
-    //       check if user has permission to upload
+    // check if user has permission to upload
     if !user.allowed(Permissions::ADD_VIDEOS) {
         return AuthenticationError::InsufficientPermissions(Permissions::ADD_VIDEOS).into();
     }
-    //       check if game exists
-    //          this also checks if user is in the game group
+    // check if game exists
+    //    this also checks if user is in the game group
     let games = db.get_user_games_list(&user).await?;
     if !games.contains(&form.game) {
         return ApiResponder::Err(UploadError::GameNotFound.into());
     }
     let game = form.game.clone();
 
-    //       get video metadata
+    // get video metadata
     let mut videos = vec![];
     for file in form.files.iter_mut() {
         let vfile = VideoFile::from_path(file.file.path().unwrap()).await?;
 
-        //       generate random code: https://github.com/topongo/movieStore/blob/master/video_share/models.py#L25
+        // generate random code: https://github.com/topongo/movieStore/blob/master/video_share/models.py#L25
         let mut code;
-        //       check if code isn't clashing
+        // check if code isn't clashing
         loop {
             code = Video::random_code();
             if db.check_video_code(&code).await? { break }
             log::warn!("code clashes: {}", code);
         }
-        //       insert video file in db
+        // insert video file in db
         let fid = vfile.id.clone();
         db.insert_video_file(vfile).await?;
-        //       insert video in db
+        // insert video in db
         let video = Video {
             id: code,
             file: Either::Left(fid.clone()),
@@ -362,7 +362,7 @@ pub(crate) async fn upload(mut form: Form<UploadForm<'_>>, user: Result<UserGuar
         };
 
         db.insert_video(&video).await?;
-        //       move file to storage only if everything is successful
+        // move file to storage only if everything is successful
         let target = Path::new(&CONFIG.video_storage).join(&fid);
         file.file.move_copy_to(target).await.expect("Failed to move file to storage");
         videos.push(video);
