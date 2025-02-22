@@ -97,6 +97,14 @@ impl Video {
             }
         )
     }
+
+    // fails if file is Either::Left
+    pub(crate) async fn resolve_converted(&mut self, db: &DBWrapper) -> Result<(), mongodb::error::Error> {
+        if let Some(conv) = self.file.as_ref().unwrap_right().converted.clone() {
+            self.file = Either::Right(db.get_video_file(&conv).await?.unwrap());
+        }
+        Ok(())
+    }
 }
 
 impl DBWrapper {
@@ -183,6 +191,13 @@ impl DBWrapper {
             .find(d, None)
             .await?
             .try_collect()
+            .await
+    }
+
+    pub(crate) async fn get_video_file(&self, id: &str) -> Result<Option<VideoFile>, mongodb::error::Error> {
+        self
+            .collection::<VideoFile>(Self::VIDEO_FILES)
+            .find_one(doc! { "_id": id }, None)
             .await
     }
 

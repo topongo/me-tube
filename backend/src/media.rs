@@ -218,7 +218,9 @@ impl<'r> Responder<'r, 'r> for MediaStream {
         } else { t },
         None => return Err(StreamError::NotFound),
     };
-    let video = db.get_video_resolved(&t.video).await.map_err(|e| StreamError::ApiError(e.into()))?.ok_or(StreamError::NotFound)?;
+    let mut video = db.get_video_resolved(&t.video).await.map_err(|e| StreamError::ApiError(e.into()))?.ok_or(StreamError::NotFound)?;
+    // resolve eventual converted video
+    video.resolve_converted(&db).await.map_err(|e| StreamError::ApiError(e.into()))?;
 
     MediaStream::from_video(range, video).await
 }

@@ -125,7 +125,7 @@ pub(crate) struct VideoFile {
     audio_codec: AudioCodec,
     video_codec: VideoCodec,
     pub(super) format: Format,
-    converted: Option<String>,
+    pub(crate) converted: Option<String>,
 }
 
 
