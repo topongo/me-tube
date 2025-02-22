@@ -65,5 +65,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             db.add_user(new_user).await?
         }
     }
-    todo!()
+    Ok(())
 }
