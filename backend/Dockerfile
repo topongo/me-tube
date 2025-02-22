@@ -15,7 +15,8 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim AS runtime
 
-RUN apt update && apt install tini
+RUN apt-get update && apt-get -y install tini
+RUN apt-get -y install ffmpeg
 
 COPY --from=backend /back/target/release/me-tube /usr/local/bin/me-tube
 COPY --from=backend /back/target/release/me-tube-admin /usr/local/bin/me-tube-admin
