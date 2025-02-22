@@ -2,6 +2,7 @@
 import 'package:MeTube/users_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'upload.dart';
 import 'package:provider/provider.dart';
@@ -140,7 +141,8 @@ class _HomeScreenState extends State<HomeScreen> {
             game: _games[_videos[index]['game']]['name'], 
             userGames: _userGames, 
             likes: _likedVideos, 
-            notifyParent: () => setState(() {})
+            notifyParent: () => setState(() {}),
+            deleteSelf: () => setState(() => _videos.removeAt(index)),
           );
         },
       )
@@ -154,6 +156,7 @@ class VideoCard extends StatefulWidget {
   final Map<String, dynamic> userGames;
   final Set<String> likes;
   final Function() notifyParent;
+  final Function() deleteSelf;
 
   VideoCard({
     required this.video, 
@@ -161,6 +164,7 @@ class VideoCard extends StatefulWidget {
     required this.likes, 
     required this.game,
     required this.userGames,
+    required this.deleteSelf,
     super.key
   });
 
@@ -225,6 +229,12 @@ class _VideoCardState extends State<VideoCard> {
                 ),
                 Text(widget.video['likes'].toString())
               ]
+            ),
+            widget.video['public'] ? Container() : IconButton(
+              icon: Icon(Icons.share),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: "https://metube.prabo.org/share/${widget.video['_id']}"));
+              }
             ),
             IconButton(
               icon: Icon(widget.video['public'] ? Icons.public : Icons.lock),
@@ -309,6 +319,7 @@ class _VideoCardState extends State<VideoCard> {
                             await auth.api("video/${widget.video['_id']}", method: "DELETE");
                             if (context.mounted) {
                               widget.notifyParent();
+                              widget.deleteSelf();
                               Navigator.pop(context);
                             }
                           },

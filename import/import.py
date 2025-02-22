@@ -225,7 +225,7 @@ if __name__ == "__main__":
             continue
 
     for pk, v in uploaded_videos.items():
-        print("Processing uploaded_video", pk)
+        print("Processing uploaded_video", pk, "" if v["converted"] is None else f"(converted to {v['converted']})")
         if v["converted"] is not None:
             res = parse_video(v, converted_associated.get(v["converted"]))
         else:
