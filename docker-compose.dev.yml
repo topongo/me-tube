@@ -1,0 +1,21 @@
+services:
+  db:
+    image: mongo
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: metube
+      MONGO_INITDB_ROOT_PASSWORD: ${METUBE_DB_PASSWORD}
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.dev:/etc/nginx/conf.d
+      - ./certs:/etc/certs:ro
+      - ./backend/static:/static
+    network_mode: host
+
+volumes:
+  mongodb_data:
