@@ -2,15 +2,15 @@ import 'dart:io';
 
 import 'package:MeTube/password_reset.dart';
 import 'package:async/async.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'auth.dart';
 import 'home.dart';
 import 'package:media_kit/media_kit.dart';
 import 'login.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
-late final List<int> certificate;
+late final String apiBaseUrl;
 
 void main() async {
   // print("open file");
@@ -23,6 +23,13 @@ void main() async {
   // final chunk = await chunkedStream.readChunk(100000000000);
   // print(chunk.length);
   // exit(0);
+
+  // get apiBaseUrl from env variable
+  if (!kIsWeb) {
+    apiBaseUrl = Platform.environment["API_BASE_URL"] ?? "http://127.0.0.1:8000/api";
+  } else {
+    apiBaseUrl = "/api";
+  }
   
 
   MediaKit.ensureInitialized();

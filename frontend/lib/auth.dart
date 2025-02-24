@@ -12,7 +12,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService with ChangeNotifier {
-  static String baseUrl = 'https://metube.prabo.org/api';
+  static String baseUrl = apiBaseUrl;
   String? _refreshToken;
   String? _accessToken;
   bool _isLoading = false;
@@ -40,13 +40,13 @@ class AuthService with ChangeNotifier {
 
   // Initialize from local storage (e.g., token persistence)
   AuthService() {
-    if (!kIsWeb) {
-      final context = SecurityContext.defaultContext;
-      context.setTrustedCertificatesBytes(certificate);
-      client = IOClient(HttpClient(context: context));
-    } else {
+    // if (!kIsWeb) {
+    //   final context = SecurityContext.defaultContext;
+    //   context.setTrustedCertificatesBytes(certificate);
+    //   client = IOClient(HttpClient(context: context));
+    // } else {
       client = http.Client();
-    }
+    // }
     _loadToken();
   }
 
