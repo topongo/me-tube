@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import 'auth.dart';
 
 class VideoScreen extends StatefulWidget {
-  final String video;
-  const VideoScreen({super.key, required this.video});
+  final dynamic video;
+  final String game;
+  bool liked;
+  VideoScreen({super.key, required this.video, required this.game, required this.liked});
 
   @override
   _VideoScreenState createState() => _VideoScreenState();
@@ -33,28 +35,38 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   Future<void> _loadVideo(AuthService auth) {
-      return auth.getVideo(widget.video).then((m) {
-        media = m;
-        player.open(media!);
-        setState(() => _loaded = true);
-      });
+    return auth.getVideo(widget.video["_id"]).then((m) {
+      media = m;
+      player.open(media!);
+      setState(() => _loaded = true);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Video'),
+        title: ListTile(
+          title: Text(widget.video["name"] ?? widget.video["_id"]),
+          subtitle: Text("${widget.game} - ${widget.video["owner"]}")
+        ),
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
           IconButton(
-            icon: Icon(Icons.favorite),
-            onPressed: () {
+            icon: Icon(widget.liked ? Icons.favorite : Icons.favorite_border),
+            onPressed: () async {
               final auth = Provider.of<AuthService>(context, listen: false);
-              auth.api("video/${widget.video}/favorite", method: "POST").then((_) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Video favorited')));
-              });
+              try {
+                await auth.api("video/${widget.video["_id"]}/like", method: widget.liked ? "DELETE" : "POST");
+                if (context.mounted) {
+                  setState(() => widget.liked = !widget.liked);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error while liking video: $e')));
+                }
+              }
             }
           )
         ]
