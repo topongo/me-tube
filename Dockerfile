@@ -3,9 +3,14 @@ FROM ghcr.io/cirruslabs/flutter AS frontend
 WORKDIR /flutter
 
 COPY frontend/pubspec.yaml .
-COPY frontend/web web
-RUN flutter pub get
+RUN mkdir lib assets web && \
+    echo 'main() {}' > lib/main.dart && \
+    touch web/index.html && \
+    sed -i -E 's/^\s+- assets.*//' pubspec.yaml
+RUN flutter pub get && flutter build web
+COPY frontend/pubspec.yaml .
 COPY frontend/lib lib
+COPY frontend/web web
 COPY frontend/assets assets
 RUN flutter build web
 
