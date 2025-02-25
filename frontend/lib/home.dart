@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _totalVideos = totalCount;
           isLoading = false;
           _init = true;
-          print('page status: hasMore: ${hasMore()}, totalVideos: $_totalVideos, videos: ${_videos.length}');
+          // print('page status: hasMore: ${hasMore()}, totalVideos: $_totalVideos, videos: ${_videos.length}');
         });
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$e")));
@@ -79,10 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(() {
-      print("scrolling: ${_scrollController.position.pixels}");
+      // print("scrolling: ${_scrollController.position.pixels}");
       final fetchTrigger = .8 * _scrollController.position.maxScrollExtent;
       if (_scrollController.position.pixels > fetchTrigger) {
-        print("triggered: hasMore: ${hasMore()}");
+        // print("triggered: hasMore: ${hasMore()}");
         if (hasMore()) loadMore();
       }
     });
@@ -136,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
               return Center(child: CircularProgressIndicator());
             }
           }
-          return VideoCard(
+          return VideoTile(
             video: _videos[index], 
             game: _games[_videos[index]['game']]['name'], 
             userGames: _userGames, 
@@ -150,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class VideoCard extends StatefulWidget {
+class VideoTile extends StatefulWidget {
   final Map<String, dynamic> video;
   final String game;
   final Map<String, dynamic> userGames;
@@ -158,7 +158,7 @@ class VideoCard extends StatefulWidget {
   final Function() notifyParent;
   final Function() deleteSelf;
 
-  VideoCard({
+  VideoTile({
     required this.video, 
     required this.notifyParent, 
     required this.likes, 
@@ -169,10 +169,10 @@ class VideoCard extends StatefulWidget {
   });
 
   @override
-  _VideoCardState createState() => _VideoCardState();
+  _VideoTileState createState() => _VideoTileState();
 }
 
-class _VideoCardState extends State<VideoCard> {
+class _VideoTileState extends State<VideoTile> {
   @override
   Widget build(BuildContext context) {
     // print("constructing video card for ${widget.video['_id']}");
@@ -217,7 +217,7 @@ class _VideoCardState extends State<VideoCard> {
               icon: Icon(Icons.more_vert),
               onPressed: () {
                 showModalBottomSheet(context: context, builder: (context) {
-                  return VideoActionsCard(
+                  return VideoCard(
                     video: widget.video, 
                     userGames: widget.userGames, 
                     notifyParent: widget.notifyParent, 
@@ -234,20 +234,20 @@ class _VideoCardState extends State<VideoCard> {
   }
 }
 
-class VideoActionsCard extends StatefulWidget {
+class VideoCard extends StatefulWidget {
   final Map<String, dynamic> video;
   final Map<String, dynamic> userGames;
   final String game;
   final Function() notifyParent;
   final Function() deleteSelf;
 
-  VideoActionsCard({required this.video, required this.userGames, required this.notifyParent, required this.deleteSelf, required this.game, super.key});
+  VideoCard({required this.video, required this.userGames, required this.notifyParent, required this.deleteSelf, required this.game, super.key});
 
   @override
-  _VideoActionsCardState createState() => _VideoActionsCardState();
+  _VideoCardState createState() => _VideoCardState();
 }
 
-class _VideoActionsCardState extends State<VideoActionsCard> {
+class _VideoCardState extends State<VideoCard> {
   Future<void> _updateVideo(String key, dynamic value, BuildContext context, {bool? dontPop}) async {
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
@@ -334,8 +334,8 @@ class _VideoActionsCardState extends State<VideoActionsCard> {
                 return AlertDialog(
                   title: Text('Set Game'),
                   content: GameSelector(
-                    games: widget.userGames,
                     game: game,
+                    games: widget.userGames,
                     onChanged: (value) => game = value,
                   ),
                   actions: [

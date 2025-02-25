@@ -114,7 +114,7 @@ class _UsersScreenState extends State<UsersScreen> {
                               onPressed: () async {
                                 final auth = Provider.of<AuthService>(context, listen: false);
                                 final permissions = table.permissions;
-                                print(permissions);
+                                // print(permissions);
                                 await auth.api("user/$key", method: 'PATCH', data: {'permissions': permissions});
                                 setState(() {
                                   widget._users[key]['permissions'] = permissions;

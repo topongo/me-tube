@@ -85,7 +85,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             icon: Icon(_publics[file.name]! ? Icons.public : Icons.lock),
                             onPressed: () {
                               setState(() {
-                                print("Toggling public for ${file.name} => ${_publics[file.name]}");
+                                // print("Toggling public for ${file.name} => ${_publics[file.name]}");
                                 _publics[file.name] = !_publics[file.name]!;
                               });
                             },

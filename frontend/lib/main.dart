@@ -1,7 +1,5 @@
 import 'dart:io';
-
 import 'package:MeTube/password_reset.dart';
-import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'auth.dart';
@@ -63,7 +61,7 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    print("isAuthenticated: ${authService.isAuthenticated}");
+    // print("isAuthenticated: ${authService.isAuthenticated}");
     return Consumer<AuthService>(
       builder: (context, authService, child) {
         if (!authService.isAuthenticated) {

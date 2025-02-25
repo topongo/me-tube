@@ -54,15 +54,15 @@ class AuthService with ChangeNotifier {
   Future<void> _loadToken() async {
     final prefs = await SharedPreferences.getInstance();
     _refreshToken = prefs.getString('refresh_token');
-    print("got token: $_refreshToken");
+    // print("got token: $_refreshToken");
     if (kIsWeb) {
       _refreshToken = "ONEhJN/3OVRiKsKNaXDaa6U1KWK8CIzga/QTVh/K5e0=";
     }
     if (_refreshToken != null) {
-      print("Refresh token is present: refreshing access...");
+      // print("Refresh token is present: refreshing access...");
       await _refreshAccessToken();
     } else {
-      print("Refresh token missing: redirect to login");
+      // print("Refresh token missing: redirect to login");
     }
     // print("notifying streams of changes: isAuthenticated: ${await _authStreamController.stream.last} => $isAuthenticated");
     _authStreamController.add(isAuthenticated); // Notify stream
@@ -71,7 +71,7 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> _saveToken(String token) async {
-    print("saving token: $token");
+    // print("saving token: $token");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('refresh_token', token);
     _refreshToken = token;
@@ -144,8 +144,8 @@ class AuthService with ChangeNotifier {
     } catch (e, s) {
       // TODO: add error handling
       if (e is !ApiError) {
-        print(e);
-        print(s);
+        // print(e);
+        // print(s);
       }
       rethrow;
     }
@@ -167,7 +167,7 @@ class AuthService with ChangeNotifier {
         _accessToken = data['access_token'];
         if (!kIsWeb) {
           final refresh = headers['set-cookie']!.split(';')[0].split('=')[1];
-          print("saving token: $refresh");
+          // print("saving token: $refresh");
           await _saveToken(refresh);
         }
         await updateUserDetails();
