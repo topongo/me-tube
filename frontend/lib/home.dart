@@ -125,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         child: Icon(Icons.upload),
       ),
-      body: !_init ? const Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator()]) : ListView.builder(
+      body: !_init ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator()])) : ListView.builder(
         controller: _scrollController,
         itemCount: (hasMore() ? 1 : 0) + _videos.length,
         itemBuilder: (context, index) {
