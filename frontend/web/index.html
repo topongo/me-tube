@@ -31,8 +31,37 @@
 
   <title>frontend</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    body {
+      background-color: #141218;
+    }
+
+    .loader {
+      width: 100%;
+      top: 40%;
+      display: flex;
+      position: absolute;
+      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .logo {
+      height: 4em;
+    }
+
+    .loading {
+      height: 4em;
+      width: 4em;
+      margin-top: 6em;
+    }
+  </style>
 </head>
-<body>
-  <script src="flutter_bootstrap.js" async></script>
-</body>
+  <body>
+    <div class="loader">
+      <img src="assets/logo.svg" class="logo">
+      <img src="loading.gif" class="loading">
+    </div>
+    <script src="flutter_bootstrap.js" async></script>
+  </body>
 </html>
