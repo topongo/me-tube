@@ -386,6 +386,8 @@ class _VideoCardState extends State<VideoCard> {
             );
           }
         ),
+        Divider(),
+        Text("Created: ${DateTime.parse(widget.video['added']).toLocal()}"),
       ],
     );
   }
