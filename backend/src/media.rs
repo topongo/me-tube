@@ -1,22 +1,8 @@
 use std::io::SeekFrom;
-
 use rocket::{futures::Stream, http::ContentType, request::{FromRequest, Outcome}, response::{stream::{stream, ByteStream}, Responder}, serde::json::Json, tokio::io::{AsyncReadExt, AsyncSeekExt}, Response};
 use rocket::tokio::fs::File;
 use serde::Serialize;
-
-use crate::{db::DBWrapper, response::{ApiError, ApiResponder}, video::Video};
-
-// struct RangedResponder {
-//     file: Path,
-//     start: Option<u64>,
-//     end: Option<u64>,
-// }
-//
-// impl Responder for RangedResponder {
-//     fn respond_to(self, _: &rocket::Request) -> rocket::response::Result<'static> {
-//
-//     }
-// }
+use crate::{db::DBWrapper, response::{ApiError, ApiResponder}, video::Video, CONFIG};
 
 #[derive(Debug)]
 pub(crate) struct Range {
@@ -106,8 +92,6 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for StreamError {
     }
 }
 
-const CHUNK_SIZE: u64 = 1 << 20;
-
 pub(crate) struct MediaStream {
     range: Option<Range>,
     len: u64,
@@ -151,20 +135,20 @@ impl MediaStream {
             Some(r) => (r.start.unwrap_or(0u64), r.end.unwrap_or(self.len - 1) + 1),
             None => (0u64, self.len),
         };
-        let mut buf = vec![0; CHUNK_SIZE as usize];
+        let mut buf = vec![0; CONFIG.media_chunk as usize];
         ByteStream::from(stream! {
             // use default chunk size:
             if pos > 0 {
                 self.file.seek(SeekFrom::Start(pos)).await.unwrap();
             }
             loop {
-                if pos + CHUNK_SIZE > end {
+                if pos + CONFIG.media_chunk > end {
                     let mut last_buf = vec![0; (end - pos) as usize];
                     self.file.read_exact(&mut last_buf).await.unwrap();
                     yield last_buf;
                     break;
                 } else {
-                    pos += CHUNK_SIZE;
+                    pos += CONFIG.media_chunk;
                     self.file.read_exact(&mut buf).await.unwrap();
                     yield buf.clone();
                 }

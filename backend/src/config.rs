@@ -19,6 +19,7 @@ pub struct MeTube {
     pub(crate) video_storage: String,
     pub(crate) cors: CorsConfig,
     pub database: String,
+    pub(crate) media_chunk: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
