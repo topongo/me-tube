@@ -11,6 +11,10 @@ pub(crate) trait ApiErrorType {
     fn ty(&self) -> &'static str;
     fn message(&self) -> String;
     fn status(&self) -> Status;
+
+    fn outcome<T>(self) -> rocket::request::Outcome<T, Self> where Self: std::marker::Sized {
+        rocket::request::Outcome::Error((self.status(), self))
+    }
 }
 
 pub(crate) enum ApiResponder<T> where T: ApiResponse {

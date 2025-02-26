@@ -28,11 +28,11 @@ impl<'r> FromRequest<'r> for Authorization {
             Some(auth) => {
                 let auth = auth.split_whitespace().collect::<Vec<&str>>();
                 if auth.len() != 2 || auth[0] != "Bearer" {
-                    return rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::MalformedAccessToken));
+                    return Self::Error::MalformedAccessToken.outcome()
                 }
                 rocket::request::Outcome::Success(Authorization(auth[1].to_string()))
             },
-            None => rocket::request::Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::MissingAccessToken))
+            None => Self::Error::MissingAccessToken.outcome()
         }
     }
 }
@@ -61,12 +61,12 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<OkExpired> {
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
         let db = match request.guard::<DBWrapper>().await {
             Outcome::Success(db) => db,
-            Outcome::Error(_) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::InternalServerError)),
+            Outcome::Error(_) => return Self::Error::InternalServerError.outcome(),
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         let auth = match request.guard::<Authorization>().await {
             Outcome::Success(auth) => auth,
-            Outcome::Error(_) => return Outcome::Error((rocket::http::Status::Forbidden, Self::Error::InvalidAccessToken)),
+            Outcome::Error(_) => return Self::Error::InvalidAccessToken.outcome(),
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         let auth = auth.into_inner();
@@ -76,12 +76,12 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<OkExpired> {
                     if u.check_access(&auth) {
                         u
                     } else {
-                        return Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::ExpiredAccessToken));
+                        return Self::Error::ExpiredAccessToken.outcome()
                     }
                 },
-                None => return Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::InvalidAccessToken)),
+                None => return Self::Error::InvalidAccessToken.outcome(),
             }
-            Err(e) => return Outcome::Error((rocket::http::Status::InternalServerError, Self::Error::DatabaseError(e))),
+            Err(e) => return Self::Error::DatabaseError(e).outcome(),
         };
         rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
     }
@@ -98,7 +98,7 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<()> {
             Outcome::Forward(f) => return Outcome::Forward(f),
         };
         if user.password_reset {
-            return Outcome::Error((rocket::http::Status::Unauthorized, Self::Error::ExpiredPassword));
+            return Self::Error::ExpiredPassword.outcome()
         }
         rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
     }
@@ -117,7 +117,7 @@ impl<'r> rocket::request::FromRequest<'r> for UserGuard<IsAdmin> {
         if user.allowed(Permissions::ADMIN) {
             rocket::request::Outcome::Success(Self { user, _phantom: PhantomData })
         } else {
-            rocket::request::Outcome::Error((rocket::http::Status::Forbidden, Self::Error::InsufficientPermissions(Permissions::ADMIN)))
+            Self::Error::InsufficientPermissions(Permissions::ADMIN).outcome()
         }
     }
 }

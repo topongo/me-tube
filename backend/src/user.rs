@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use rand::{rngs::OsRng, RngCore};
 use base64::{Engine, prelude::BASE64_URL_SAFE};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, PasswordHash, password_hash::SaltString};
-
 use crate::{authentication::{AuthenticationError, IsAdmin, OkExpired, UserGuard}, config::CONFIG, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}};
 
 fn secure_rnd_string() -> String {
