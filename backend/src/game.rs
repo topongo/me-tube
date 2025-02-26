@@ -164,8 +164,13 @@ pub(crate) async fn list_user_games(username: Option<&str>, user: Result<UserGua
     if target != user.username && !user.allowed(Permissions::ADMIN) {
         return AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into();
     }
-    let games = db.get_user_games(&user).await?;
-    GetResponse { games }.into()
+    match db.get_user(target).await? {
+        Some(u) => {
+            let games = db.get_user_games(&u).await?;
+            GetResponse { games }.into()
+        }
+        None => ApiResponder::Err(GameUserError::UserNotFound.into()),
+    }
 }
 
 #[derive(Serialize)]
