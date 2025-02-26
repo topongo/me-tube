@@ -240,28 +240,22 @@ impl ApiErrorType for LoginError {
 pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: DBWrapper) -> ApiResponder<LoginResponse> {
     let form = form.into_inner();
 
-    let mut user = match db.get_user(&form.username).await {
-        Ok(u) => match u {
-            Some(u) => u,
-            None => return ApiResponder::Err(LoginError::UserNotFound.into()),
-        }
-        Err(e) => return ApiResponder::Err(e.into())
+    let mut user = match db.get_user(&form.username).await? {
+        Some(u) => u,
+        None => return ApiResponder::Err(LoginError::UserNotFound.into()),
     };
 
     if user.verify_password(form.password) {
         let (access, refresh) = user.generate_access_and_refresh();
-        if let Err(e) = db.update_user(&user).await {
-            ApiResponder::Err(e.into())
-        } else {
-            #[cfg(debug_assertions)]
-            {
-                let user  = db.get_user(&form.username).await.unwrap().unwrap();
-                assert!(user.check_access(&access));
-                assert!(user.check_refresh(&refresh));
-            }
-            cookies.add_private(("refresh", refresh));
-            LoginResponse { access_token: access }.into()
+        db.update_user(&user).await?;
+        #[cfg(debug_assertions)]
+        {
+            let user  = db.get_user(&form.username).await.unwrap().unwrap();
+            assert!(user.check_access(&access));
+            assert!(user.check_refresh(&refresh));
         }
+        cookies.add_private(("refresh", refresh));
+        LoginResponse { access_token: access }.into()
     } else {
         ApiResponder::Err(LoginError::InvalidCredentials.into())
     }
@@ -306,36 +300,23 @@ impl ApiErrorType for RefreshError {
 
 #[post("/refresh")]
 pub(crate) async fn refresh(cookies: &CookieJar<'_>, db: DBWrapper) -> ApiResponder<RefreshResponse> {
-    let refresh = cookies.get_private("refresh");
-    match refresh {
+    match cookies.get_private("refresh") {
         Some(r) => {
-            match db.get_user_by_refresh(r.value()).await {
-                Ok(u) => match u {
-                    Some(mut u) => {
-                        if u.check_refresh(r.value()) {
-                            let access = u.generate_access();
-                            if let Err(e) = db.update_user(&u).await {
-                                log::error!("{:?}", e);
-                                ApiResponder::Err(e.into())
-                            } else {
-                                cookies.add_private(("refresh", r.value().to_string()));
-                                RefreshResponse { access_token: access }.into()
-                            }
-                        } else {
-                            ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
-                        }
-                    },
-                    None => ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
-                }
-                Err(e) => {
-                    log::error!("{:?}", e);
-                    ApiResponder::Err(e.into())
-                }
+            match db.get_user_by_refresh(r.value()).await? {
+                Some(mut u) => {
+                    if u.check_refresh(r.value()) {
+                        let access = u.generate_access();
+                        db.update_user(&u).await?;
+                        cookies.add_private(("refresh", r.value().to_string()));
+                        RefreshResponse { access_token: access }.into()
+                    } else {
+                        ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
+                    }
+                },
+                None => ApiResponder::Err(RefreshError::InvalidRefreshToken.into())
             }
         }
-        None => {
-            ApiResponder::Err(RefreshError::MissingRefreshToken.into())
-        }
+        None => ApiResponder::Err(RefreshError::MissingRefreshToken.into())
     }
 }
 

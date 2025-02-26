@@ -282,15 +282,11 @@ impl From<Vec<User>> for ListUsersResponse {
 impl ApiResponse for ListUsersResponse {}
 
 #[get("/")]
-pub(crate) async fn list(user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<ListUsersResponse> {
-    let user = user?.user;
-    if !user.allowed(Permissions::ADMIN) {
-        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
-    } else {
-        match db.get_users().await {
-            Ok(users) => ListUsersResponse::from(users).into(),
-            Err(e) => ApiResponder::Err(e.into())
-        }
+pub(crate) async fn list(user: Result<UserGuard<IsAdmin>, AuthenticationError>, db: DBWrapper) -> ApiResponder<ListUsersResponse> {
+    let _ = user?;
+    match db.get_users().await {
+        Ok(users) => ListUsersResponse::from(users).into(),
+        Err(e) => ApiResponder::Err(e.into())
     }
 }
 
@@ -418,39 +414,28 @@ pub(crate) async fn post(form: Json<PostForm>, user: Result<UserGuard<IsAdmin>, 
     let _ = user?;
     let PostForm { username, password } = form.into_inner();
     // check if username is taken
-    match db.get_user(&username).await {
-        Ok(u) => if u.is_some() {
-            return ApiResponder::Err(PostError::UsernameTaken.into());
-        }
-        // db error
-        Err(e) => return ApiResponder::Err(e.into())
+    if db.get_user(&username).await?.is_some() {
+        return ApiResponder::Err(PostError::UsernameTaken.into());
     }
     // check if username and password are valid
     if let Some(e) = User::validate(Some(&username), Some(&password)) {
         return ApiResponder::Err(PostError::from(e).into());
     }
     let user = User::create(username.to_string(), password);
-    if let Err(e) = db.add_user(user).await {
-        panic!("{:?}", e)
-    }
+    db.add_user(user).await?;
 
     PostResponse.into()
 }
 
 #[delete("/<username>")]
-pub(crate) async fn delete(username: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<PostResponse> {
+pub(crate) async fn delete(username: &str, user: Result<UserGuard<IsAdmin>, AuthenticationError>, db: DBWrapper) -> ApiResponder<PostResponse> {
     let user = user?.user;
-    if !user.allowed(Permissions::ADMIN) {
-        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
-    } else {
-        match db.get_user(username).await {
-            Ok(Some(_)) => {
-                db.delete_user(user).await?;
-                PostResponse.into()
-            }
-            Ok(None) => ApiResponder::Err(PostError::UserNotFound.into()),
-            Err(e) => ApiResponder::Err(e.into())
+    match db.get_user(username).await? {
+        Some(_) => {
+            db.delete_user(user).await?;
+            PostResponse.into()
         }
+        None => ApiResponder::Err(PostError::UserNotFound.into()),
     }
 }
 
@@ -474,11 +459,7 @@ pub(crate) struct PermissionsResponse(&'static HashMap<&'static str, u32>);
 impl ApiResponse for PermissionsResponse {}
 
 #[get("/permissions")]
-pub(crate) async fn permissions(user: Result<UserGuard<()>, AuthenticationError>) -> ApiResponder<PermissionsResponse> {
-    let user = user?.user;
-    if !user.allowed(Permissions::ADMIN) {
-        ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into())
-    } else {
-        PermissionsResponse(&TABLE).into()
-    }
+pub(crate) async fn permissions(user: Result<UserGuard<IsAdmin>, AuthenticationError>) -> ApiResponder<PermissionsResponse> {
+    let _ = user?.user;
+    PermissionsResponse(&TABLE).into()
 }

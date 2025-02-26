@@ -4,7 +4,7 @@ use rocket::{futures::{StreamExt, TryStreamExt}, serde::json::Json};
 use serde::{Deserialize, Serialize};
 use rocket_db_pools::mongodb::{self, bson::{doc, oid::ObjectId, Document}, options::ReplaceOptions};
 
-use crate::{authentication::{AuthenticationError, UserGuard}, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}, user::{Permissions, User}};
+use crate::{authentication::{AuthenticationError, IsAdmin, UserGuard}, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}, user::{Permissions, User}};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Game {
@@ -145,6 +145,7 @@ pub(crate) struct GetResponse {
 
 impl ApiResponse for GetResponse {}
 
+// this gets all games
 #[get("/")]
 pub(crate) async fn list(user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<GetResponse> {
     let user = user?.user;
@@ -195,11 +196,8 @@ impl ApiErrorType for GameUserError {
 }
 
 #[post("/<game>/<new_user>", format = "json")]
-pub(crate) async fn add_user(game: String, new_user: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<()> {
-    let user = user?.user;
-    if !user.allowed(Permissions::ADMIN) {
-        return AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into();
-    }
+pub(crate) async fn add_user(game: String, new_user: &str, user: Result<UserGuard<IsAdmin>, AuthenticationError>, db: DBWrapper) -> ApiResponder<()> {
+    let _ = user?;
     match db.get_game(&game).await? {
         Some(game) => {
             match db.get_user(new_user).await? {
@@ -215,11 +213,8 @@ pub(crate) async fn add_user(game: String, new_user: &str, user: Result<UserGuar
 }
 
 #[delete("/<game>/<new_user>", format = "json")]
-pub(crate) async fn remove_user(game: String, new_user: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<()> {
-    let user = user?.user;
-    if !user.allowed(Permissions::ADMIN) {
-        return AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into();
-    }
+pub(crate) async fn remove_user(game: String, new_user: &str, user: Result<UserGuard<IsAdmin>, AuthenticationError>, db: DBWrapper) -> ApiResponder<()> {
+    let _ = user?;
     match db.get_game(&game).await? {
         Some(game) => {
             match db.get_user(new_user).await? {
