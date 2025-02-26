@@ -168,13 +168,6 @@ impl User {
             .is_some_and(|t| t.valid(refresh_token))
     }
 
-    pub(crate) fn generate_expiring_token(duration: TimeDelta) -> ExpiringToken {
-        ExpiringToken {
-            token: secure_rnd_string(),
-            expires: Utc::now() + duration,
-        }
-    }
-
     pub(crate) fn generate_access(&mut self) -> String {
         let access = ExpiringToken::new(CONFIG.access_token_duration);
         let r = access.token.clone();
