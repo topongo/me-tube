@@ -111,7 +111,7 @@ impl DBWrapper {
     pub(crate) async fn check_video_code(&self, code: &str) -> Result<bool, mongodb::error::Error> {
         Ok(self
             .collection::<Video>(Self::VIDEO_FILES)
-            .find_one(doc! { "id": code }, None)
+            .find_one(doc! { "_id": code }, None)
             .await?
             .is_none())
     }
