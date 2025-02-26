@@ -138,7 +138,7 @@ pub(crate) struct VideoList(Vec<String>);
 
 impl ApiResponse for VideoList {}
 
-// get likes that the user left, under /like/
+// get likes that the user left
 #[get("/")]
 pub(crate) async fn user(user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<VideoList> {
     let user = user?.user;

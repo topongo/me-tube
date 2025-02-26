@@ -66,7 +66,7 @@ impl DBWrapper {
             .await
     }
 
-    pub(crate) async fn get_user_games_list(&self, user: &User) -> Result<HashSet<String>, mongodb::error::Error> {
+    pub(crate) async fn get_user_games_ids(&self, user: &User) -> Result<HashSet<String>, mongodb::error::Error> {
         self
             .collection::<Document>(Self::GAME_USERS)
             .find(doc!{"user": &user.username}, None)

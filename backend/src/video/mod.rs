@@ -152,7 +152,7 @@ impl DBWrapper {
         let m = if user.allowed(Permissions::ADMIN) {
             doc! { }
         } else {
-            let user_games = self.get_user_games_list(user).await?;
+            let user_games = self.get_user_games_ids(user).await?;
             doc! { "$or": [{ "owner": &user.username }, { "public": true }, { "game": { "$in": user_games.into_iter().collect::<Vec<_>>() } }]}
         };
         pipeline.push(doc! {"$match": m.clone()});
@@ -328,7 +328,7 @@ pub(crate) async fn upload(mut form: Form<UploadForm<'_>>, user: Result<UserGuar
     }
     // check if game exists
     //    this also checks if user is in the game group
-    let games = db.get_user_games_list(&user).await?;
+    let games = db.get_user_games_ids(&user).await?;
     if !games.contains(&form.game) {
         return ApiResponder::Err(UploadError::GameNotFound.into());
     }
@@ -634,12 +634,12 @@ impl ApiErrorType for UpdateError {
 
 #[post("/<video>", data = "<form>", format = "json")]
 pub(crate) async fn update(video: &str, form: Json<UpdateForm>, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<UpdateResponse> {
+    let user = user?.user;
     let mut video = match db.get_video(video).await? {
         Some(v) => v,
         None => return ApiResponder::Err(UpdateError::VideoNotFound.into()),
     };
-    let user = user?.user;
-    let user_games = db.get_user_games_list(&user).await?;
+    let user_games = db.get_user_games_ids(&user).await?;
     if let Some(ref game) = form.game {
         // check if user is part of target game
         //   if the user is admin, it's automatically in all games.
