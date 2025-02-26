@@ -1,4 +1,4 @@
-use rocket::request::FromRequest;
+use rocket::request::{FromRequest, Outcome};
 use rocket::Build;
 use rocket_db_pools::mongodb::bson::doc;
 use rocket_db_pools::{Connection, Database};
@@ -84,11 +84,16 @@ impl ApiErrorType for mongodb::error::Error {
 impl<'r> FromRequest<'r> for DBWrapper {
     type Error = AuthenticationError;
 
-    async fn from_request(request: &'r rocket::Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
-        let db = request.guard::<Connection<Db>>().await.unwrap();
-        let db = DBWrapper::new(db.into_inner());
-        db._enforce_constraints().await;
-        rocket::request::Outcome::Success(db)
+    async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
+        match request.guard::<Connection<Db>>().await {
+            Outcome::Success(db) => {
+                let db = DBWrapper::new(db.into_inner());
+                db._enforce_constraints().await;
+                rocket::request::Outcome::Success(db)
+            }
+            Outcome::Error(_) => Self::Error::InternalServerError.outcome(),
+            Outcome::Forward(f) => rocket::request::Outcome::Forward(f)
+        }
     }
 }
 
