@@ -30,8 +30,8 @@ impl ExpiringToken {
         }
     }
 
-    pub(crate) fn valid(&self) -> bool {
-        self.expires > Utc::now()
+    pub(crate) fn valid(&self, token: &str) -> bool {
+        self.expires > Utc::now() && token == self.token
     }
 }
 
@@ -159,13 +159,13 @@ impl User {
     pub(crate) fn check_access(&self, access_token: &str) -> bool {
         self.access_token
             .as_ref()
-            .is_some_and(|t| t.valid() && t.token == access_token)
+            .is_some_and(|t| t.valid(access_token))
     }
 
     pub(crate) fn check_refresh(&self, refresh_token: &str) -> bool {
         self.refresh_token
             .as_ref()
-            .is_some_and(|t| t.valid() && t.token == refresh_token)
+            .is_some_and(|t| t.valid(refresh_token))
     }
 
     pub(crate) fn generate_expiring_token(duration: TimeDelta) -> ExpiringToken {

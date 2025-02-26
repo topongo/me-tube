@@ -211,8 +211,7 @@ impl<'r> Responder<'r, 'r> for MediaStream {
         db: DBWrapper
     ) -> Result<MediaStream, StreamError> {
     let t = match db.get_video_token(token).await.map_err(|e| StreamError::ApiError(e.into()))? {
-        // Some(t) => if !t.token.valid()&& false {
-        Some(t) => if false {
+        Some(t) => if !t.token.valid(token) {
             warn!("token is invalid: {:?}", t);
             return Err(StreamError::NotFound);
         } else { t },
