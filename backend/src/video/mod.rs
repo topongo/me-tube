@@ -361,10 +361,19 @@ pub(crate) async fn upload(mut form: Form<UploadForm<'_>>, user: Result<UserGuar
             added: Utc::now(),
         };
 
-        db.insert_video(&video).await?;
+        // delete video file if video insertion fails
+        if let Err(e) = db.insert_video(&video).await {
+            db.delete_video_file(&fid).await?;
+            return ApiResponder::Err(e.into());
+        }
         // move file to storage only if everything is successful
         let target = Path::new(&CONFIG.video_storage).join(&fid);
-        file.file.move_copy_to(target).await.expect("Failed to move file to storage");
+        // if moving fails then remove video and file from db
+        if let Err(e) = file.file.move_copy_to(target).await {
+            db.delete_video(&video).await?;
+            db.delete_video_file(&fid).await?;
+            return ApiResponder::Err(e.into());
+        }
         videos.push(video);
     }
     UploadResponse { inner: videos }.into()
