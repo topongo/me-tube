@@ -1,8 +1,7 @@
-use chrono::TimeDelta;
 use rocket_db_pools::mongodb::{self, bson::doc};
 use serde::{Deserialize, Serialize};
 
-use crate::{db::DBWrapper, user::ExpiringToken};
+use crate::{db::DBWrapper, user::ExpiringToken, CONFIG};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct VideoToken {
@@ -13,7 +12,7 @@ pub(crate) struct VideoToken {
 impl VideoToken {
     pub(crate) fn new(video: &str) -> Self {
         Self {
-            token: ExpiringToken::new(TimeDelta::minutes(5)),
+            token: ExpiringToken::new(CONFIG.media_token_duration),
             video: video.to_string(),
         }
     }

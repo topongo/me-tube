@@ -14,6 +14,8 @@ pub struct MeTube {
     pub(crate) access_token_duration: TimeDelta,
     #[serde_as(as = "DurationSeconds<f64>")]
     pub(crate) refresh_token_duration: TimeDelta,
+    #[serde_as(as = "DurationSeconds<f64>")]
+    pub(crate) media_token_duration: TimeDelta,
     pub(crate) video_storage: String,
     pub(crate) cors: CorsConfig,
     pub database: String,
