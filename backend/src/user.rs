@@ -176,14 +176,14 @@ impl User {
     }
 
     pub(crate) fn generate_access(&mut self) -> String {
-        let access = Self::generate_expiring_token(CONFIG.access_token_duration);
+        let access = ExpiringToken::new(CONFIG.access_token_duration);
         let r = access.token.clone();
         self.access_token = Some(access);
         r
     }
 
     pub(crate) fn generate_refresh(&mut self) -> String {
-        let refresh = Self::generate_expiring_token(CONFIG.refresh_token_duration);
+        let refresh = ExpiringToken::new(CONFIG.refresh_token_duration);
         let r = refresh.token.clone();
         self.refresh_token = Some(refresh);
         r
