@@ -114,10 +114,10 @@ impl User {
     }
 
 
-    pub fn validate(username: Option<&str>, password: Option<&str>) -> Option<ValidationError> {
+    pub fn validate(username: Option<&str>, password: Option<&str>) -> Result<(), ValidationError> {
         if let Some(username) = username {
             if username.len() < 4 {
-                return Some(ValidationError::InvalidUsername);
+                return Err(ValidationError::InvalidUsername);
             }
         } 
         if let Some(password) = password {
@@ -126,12 +126,12 @@ impl User {
                 // !password.chars().any(|c| c.is_lowercase()) ||
                 !password.chars().any(|c| c.is_alphanumeric()) ||
                 !password.chars().any(|c| c.is_numeric()) {
-                Some(ValidationError::InvalidPassword)
+                Err(ValidationError::InvalidPassword)
             } else {
-                None
+                Ok(())
             }
         } else {
-            None
+            Ok(())
         }
     }
 
@@ -393,9 +393,7 @@ pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<Us
         }
         // modify other fields only if logged user is admin or target_user is self
         if user.allowed(Permissions::ADMIN) || user.username == target_user.username {
-            if let Some(e) = User::validate(None, password.as_deref()) {
-                return ApiResponder::Err(PostError::from(e).into());
-            }
+            User::validate(None, password.as_deref()).map_err(PostError::from)?;
             if let Some(password) = password {
                 target_user.password_hash = User::password_hash(password);
                 target_user.password_reset = false;
@@ -418,9 +416,7 @@ pub(crate) async fn post(form: Json<PostForm>, user: Result<UserGuard<IsAdmin>, 
         return ApiResponder::Err(PostError::UsernameTaken.into());
     }
     // check if username and password are valid
-    if let Some(e) = User::validate(Some(&username), Some(&password)) {
-        return ApiResponder::Err(PostError::from(e).into());
-    }
+    User::validate(Some(&username), Some(&password)).map_err(PostError::from)?;
     let user = User::create(username.to_string(), password);
     db.add_user(user).await?;
 

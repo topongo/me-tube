@@ -57,9 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     p
                 }
             };
-            if let Some(e) = User::validate(Some(&username), Some(&password)) {
-                Err(e)?
-            }
+            User::validate(Some(&username), Some(&password))?;
             let mut new_user = User::create(username, password);
             new_user.push_permissions(Permissions::ADMIN);
             db.add_user(new_user).await?
