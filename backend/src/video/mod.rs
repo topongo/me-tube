@@ -482,28 +482,6 @@ pub(crate) async fn get_token(video: &str, user: Result<UserGuard<()>, Authentic
         None => return ApiResponder::Err(TokenError::VideoNotFound.into()),
     };
 
-    // match user {
-    //     Ok(user) => {
-    //         let user = user.user;
-    //         if !video.public && !user.allowed(Permissions::WATCH_VIDEO) {
-    //             AuthenticationError::InsufficientPermissions.into()
-    //         } else {
-    //             let token = video.generate_token();
-    //             db.add_video_token(&token).await?;
-    //             TokenResponse { inner: token.token }.into()
-    //         }
-    //     }
-    //     Err(e) => {
-    //         if !video.public {
-    //             e.into()
-    //         } else {
-    //             let token = video.generate_token();
-    //             db.add_video_token(&token).await?;
-    //             TokenResponse { inner: token.token }.into()
-    //         }
-    //     }
-    // }
-
     if video.user_authorized(user.as_ref().ok().map(|u| &u.user), &db).await? {
         let token = video.generate_token();
         db.add_video_token(&token).await?;

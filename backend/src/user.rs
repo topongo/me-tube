@@ -386,10 +386,12 @@ pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<Us
     } else {
         let mut target_user = target_user.unwrap();
         // modify permissions only if logged user is admin
-        if !user.allowed(Permissions::ADMIN) && permissions.is_some() {
-            return ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into());
-        } else {
-            target_user.permissions = permissions.unwrap_or(target_user.permissions);
+        if let Some(permissions) = permissions {
+            if !user.allowed(Permissions::ADMIN) {
+                return ApiResponder::Err(AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into());
+            } else {
+                target_user.permissions = permissions;
+            }
         }
         // modify other fields only if logged user is admin or target_user is self
         if user.allowed(Permissions::ADMIN) || user.username == target_user.username {
