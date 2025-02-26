@@ -34,11 +34,15 @@ impl<'r> Responder<'r, 'r> for ShareResponder {
 #[get("/<video>")]
 pub(crate) async fn get(video: &str, db: DBWrapper, range: Option<Range>) -> ShareResponder {
     match db.get_video_resolved(video).await {
-        Ok(Some(v)) => {
+        Ok(Some(mut v)) => {
             if !v.public {
                 return ShareResponder::NotFound;
             }
-            ShareResponder::Ok(MediaStream::from_video(range, v).await)
+            // resolve conversion
+            match v.resolve_converted(&db).await {
+                Ok(()) => ShareResponder::Ok(MediaStream::from_video(range, v).await),
+                Err(_) => ShareResponder::InternalError,
+            }
         }
         Ok(None) => ShareResponder::NotFound,
         Err(_) => ShareResponder::InternalError,
