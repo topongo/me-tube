@@ -29,26 +29,18 @@ impl DBWrapper {
     }
 
     async fn _enforce_constraints(&self) {
-        self.database()
-            .collection::<()>(Self::VIDEOS)
-            .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
-            .await.unwrap();
-        self.database()
-            .collection::<()>(Self::VIDEO_FILES)
-            .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
-            .await.unwrap();
-        self.database()
-            .collection::<()>(Self::USERS)
-            .create_index(IndexModel::builder().keys(doc! {"username": 1}).build(), None)
-            .await.unwrap();
-        self.database()
-            .collection::<()>(Self::GAMES)
-            .create_index(IndexModel::builder().keys(doc! {"id": 1}).build(), None)
-            .await.unwrap();
-        self.database()
-            .collection::<()>(Self::GAME_USERS)
-            .create_index(IndexModel::builder().keys(doc! {"game": 1, "user": 1}).build(), None)
-            .await.unwrap();
+        let unique_options = mongodb::options::IndexOptions::builder().unique(true).build();
+
+        for (c, d) in vec![
+            (Self::USERS, doc! {"username": 1}),
+            (Self::GAME_USERS, doc! {"game": 1, "user": 1}),
+            (Self::LIKES, doc! {"user": 1, "video": 1}),
+        ] {
+            self.database()
+                .collection::<()>(c)
+                .create_index(IndexModel::builder().keys(d).options(unique_options.clone()).build(), None)
+                .await.unwrap();
+        }
     }
 
     pub(crate) fn collection<T>(&self, name: &'static str) -> mongodb::Collection<T> {
