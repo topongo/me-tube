@@ -14,7 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  Future<void> _signIn() async {
+  Future<void> _signIn(BuildContext context) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -25,6 +25,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text,
         _passwordController.text,
       );
+      if (context.mounted) {
+        Navigator.pushReplacementNamed(context, "/");
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("$e")),
@@ -33,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +55,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.text,
                 validator: (value) =>
                     value!.isEmpty ? 'Enter your username' : null,
-                onEditingComplete: _signIn,
                 autofocus: true,
               ),
               TextFormField(
@@ -61,13 +64,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 validator: (value) =>
                     value!.isEmpty ? 'Enter your password' : null,
-                onEditingComplete: _signIn,
+                onEditingComplete: () => _signIn(context),
               ),
               SizedBox(height: 20),
               _isLoading
                   ? CircularProgressIndicator()
                   : ElevatedButton(
-                      onPressed: _signIn,
+                      onPressed: () => _signIn(context),
                       child: Text('Sign In'),
                     ),
               TextButton(
