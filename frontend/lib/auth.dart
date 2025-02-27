@@ -15,7 +15,7 @@ class AuthService with ChangeNotifier {
   static String baseUrl = apiBaseUrl;
   String? _refreshToken;
   String? _accessToken;
-  bool _isLoading = false;
+  bool isLoading = false;
   String? _error;
   late http.Client client;
   String? username;
@@ -31,23 +31,15 @@ class AuthService with ChangeNotifier {
       return _refreshToken != null;
     }
   }
-  bool get isLoading => _isLoading;
   String? get error => _error;
 
   // Stream for auth state changes
   final _authStreamController = StreamController<bool>();
   Stream<bool> get authState => _authStreamController.stream;
 
-  // Initialize from local storage (e.g., token persistence)
   AuthService() {
-    // if (!kIsWeb) {
-    //   final context = SecurityContext.defaultContext;
-    //   context.setTrustedCertificatesBytes(certificate);
-    //   client = IOClient(HttpClient(context: context));
-    // } else {
-      client = http.Client();
-    // }
-    _loadToken();
+    client = http.Client();
+    isLoading = true;
   }
 
   // Load token from SharedPreferences
@@ -62,7 +54,7 @@ class AuthService with ChangeNotifier {
       // print("Refresh token is present: refreshing access...");
       await _refreshAccessToken();
     } else {
-      // print("Refresh token missing: redirect to login");
+      debugPrint("Refresh token missing: redirect to login");
     }
     // print("notifying streams of changes: isAuthenticated: ${await _authStreamController.stream.last} => $isAuthenticated");
     _authStreamController.add(isAuthenticated); // Notify stream
@@ -71,14 +63,13 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> _saveToken(String token) async {
-    // print("saving token: $token");
+    debugPrint("saving token to shared prefs");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('refresh_token', token);
     _refreshToken = token;
     _authStreamController.add(true); // Notify authenticated
   }
 
-  // Delete token (logout)
   Future<void> _deleteToken() async {
     _accessToken = null;
     final prefs = await SharedPreferences.getInstance();
@@ -152,7 +143,7 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> login(String user, String password) async {
-    _isLoading = true;
+    isLoading = true;
 
     try {
       final (data, status, headers) = await apiRequest(
@@ -178,7 +169,7 @@ class AuthService with ChangeNotifier {
     } catch (e) {
       rethrow;
     } finally {
-      _isLoading = false;
+      isLoading = false;
     }
   }
 
