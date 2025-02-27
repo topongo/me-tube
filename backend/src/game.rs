@@ -156,6 +156,17 @@ pub(crate) async fn list(user: Result<UserGuard<()>, AuthenticationError>, db: D
     GetResponse { games }.into()
 }
 
+impl ApiResponse for Game {}
+
+#[get("/<game>")]
+pub(crate) async fn get(game: String, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<Game> {
+    let _ = user?;
+    match db.get_game(&game).await? {
+        Some(game) => ApiResponder::Ok(game),
+        None => ApiResponder::Err(GameUserError::GameNotFound.into()),
+    }
+}
+
 // list games for a user
 #[get("/user/<username>")]
 pub(crate) async fn list_user_games(username: Option<&str>, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<GetResponse> {

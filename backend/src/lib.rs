@@ -65,6 +65,7 @@ pub fn rocket() -> rocket::Rocket<rocket::Build> {
         ])
         .mount("/api/game", routes![
             game::add,
+            game::get,
             game::list,
             game::add_user,
             game::remove_user,
