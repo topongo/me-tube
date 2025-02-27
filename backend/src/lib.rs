@@ -54,6 +54,7 @@ pub fn rocket() -> rocket::Rocket<rocket::Build> {
         .mount("/api/video", routes![
             video::upload,
             video::list,
+            video::get,
             video::list_file,
             video::thumb,
             video::get_token,

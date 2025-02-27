@@ -409,6 +409,22 @@ pub(crate) async fn list(
     ApiResponder::OkWithHeaders(GetResponse { inner: videos }, vec![("X-Total-Count", count.to_string())])
 }
 
+impl ApiResponse for Video {}
+
+#[get("/<id>")]
+pub(crate) async fn get(id: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<Video> {
+    let user = user?.user;
+    let video = match db.get_video(id).await? {
+        Some(v) => v,
+        None => return ApiResponder::Err(ApiError::not_found()),
+    };
+    if video.user_authorized(Some(&user), &db).await? {
+        video.into()
+    } else {
+        AuthenticationError::InsufficientPermissions(Permissions::WATCH_VIDEO).into()
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct GetFileResponse {
