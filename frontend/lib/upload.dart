@@ -155,7 +155,7 @@ class _UploadScreenState extends State<UploadScreen> {
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
       int prev = 0;
-      final response = await auth.uploadVideos(
+      final List<dynamic> response = await auth.uploadVideos(
       _game!,
         _files!.files, 
         _names,
@@ -168,7 +168,7 @@ class _UploadScreenState extends State<UploadScreen> {
           }
         }
       );
-      Navigator.pop(context);
+      Navigator.pop(context, response);
     } finally {
       setState(() { _uploading = false; _progress = null; });
     }
