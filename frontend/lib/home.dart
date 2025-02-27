@@ -330,7 +330,7 @@ class _VideoCardState extends State<VideoCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return SingleChildScrollView(child: Column(
       children: [
         ListTile(
           leading: Icon(Icons.play_arrow),
@@ -450,7 +450,7 @@ class _VideoCardState extends State<VideoCard> {
         Divider(),
         Text("Created: ${DateTime.parse(widget.video['added']).toLocal()}"),
       ],
-    );
+    ));
   }
 }
 
