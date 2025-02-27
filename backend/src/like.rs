@@ -146,6 +146,22 @@ pub(crate) async fn user(user: Result<UserGuard<()>, AuthenticationError>, db: D
     VideoList(likes).into()
 }
 
+impl ApiResponse for bool {}
+
+// check if user left like on a video
+#[get("/<video>")]
+pub(crate) async fn user_single(video: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<bool> {
+    let user = user?.user;
+    match db.get_video(video).await? {
+        Some(video) => db.get_user_likes(&user)
+            .await?
+            .into_iter()
+            .any(|v| v == video.id)
+            .into(),
+        None => ApiResponder::Err(LikeError::VideoNotFound.into()),
+    }
+}
+
 #[derive(Serialize)]
 #[serde(transparent)]
 pub(crate) struct VideoLikes(HashMap<String, u16>);
@@ -158,4 +174,26 @@ pub(crate) async fn video(user: Result<UserGuard<()>, AuthenticationError>, db: 
     let user = user?.user;
     let videos = db.get_videos_likes(&user).await?;
     VideoLikes(videos).into()
+}
+
+impl ApiResponse for u16 {}
+
+// get number of likes for a single video, under /video/<video>/likes
+#[get("/<video>/likes")]
+pub(crate) async fn video_single(video: &str, user: Result<UserGuard<()>, AuthenticationError>, db: DBWrapper) -> ApiResponder<u16> {
+    let user = user?.user;
+    match db.get_video(video).await? {
+        Some(video) => {
+            if video.user_authorized(Some(&user), &db).await? {
+                let likes = db
+                    .collection::<()>(DBWrapper::LIKES)
+                    .count_documents(doc! {"video": video.id, "user": user.username}, None)
+                    .await?;
+                ApiResponder::Ok(likes as u16)
+            } else {
+                ApiResponder::Err(LikeError::VideoNotFound.into())
+            }
+        }
+        None => ApiResponder::Err(LikeError::VideoNotFound.into()),
+    }
 }

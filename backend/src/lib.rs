@@ -62,6 +62,7 @@ pub fn rocket() -> rocket::Rocket<rocket::Build> {
             like::add,
             like::delete,
             like::video,
+            like::video_single,
         ])
         .mount("/api/game", routes![
             game::add,
@@ -76,6 +77,7 @@ pub fn rocket() -> rocket::Rocket<rocket::Build> {
         ])
         .mount("/api/like", routes![
             like::user,
+            like::user_single,
         ])
         .mount("/share", routes![
             video::share::get,
