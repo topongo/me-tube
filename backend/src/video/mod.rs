@@ -568,8 +568,13 @@ pub(crate) async fn delete(video: &str, user: Result<UserGuard<()>, Authenticati
         AuthenticationError::InsufficientPermissions(Permissions::ADMIN).into()
     } else {
         db.delete_video(&video).await?;
-        if video.file.unwrap_right().delete().is_err() {
-            ApiResponder::Err(DeleteError::DeletionError.into())
+        if video.file.as_ref().unwrap_right().delete().is_err() {
+            error!("error while deleting video file {}. this could be a phantom db entry.", video.file.unwrap_right().id);
+            if cfg!(debug_assertions) {
+                DeleteResponse { inner: video.id }.into()
+            } else {
+                ApiResponder::Err(DeleteError::DeletionError.into())
+            }
         } else {
             DeleteResponse { inner: video.id }.into()
         }
