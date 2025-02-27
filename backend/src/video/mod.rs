@@ -18,6 +18,7 @@ use rocket_db_pools::mongodb::bson::doc;
 use serde::{Serialize, Deserialize};
 use token::VideoToken;
 
+use crate::response::ApiError;
 use crate::user::{ExpiringToken, User};
 use crate::{authentication::{AuthenticationError, UserGuard}, config::CONFIG, db::DBWrapper, response::{ApiErrorType, ApiResponder, ApiResponse}, user::Permissions};
 
@@ -449,7 +450,7 @@ impl<'r, 'o: 'r> rocket::response::Responder<'r, 'o> for ThumbResponder {
     fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'o> {
         match self.0 {
             Some(file) => file.respond_to(request),
-            None => Redirect::to("/static/placeholder.png").respond_to(request),
+            None => ApiResponder::<()>::Err(ApiError::not_found()).respond_to(request),
         }
     }
 }
