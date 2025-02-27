@@ -22,17 +22,21 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _loadUsers() async {
-    final auth = Provider.of<AuthService>(context, listen: false);
-    final users = await auth.api("user");
-    final Map<String, dynamic> uMap = {for (final u in users) u['username']: u};
-    final permissions = await auth.api("user/permissions");
-    final Map<String, int> pMap = {for (final MapEntry<String, dynamic> p in permissions.entries) p.key: p.value};
-    final Map<String, dynamic> games = {for (final f in await auth.api("game")) f['_id']: f};
-    setState(() {
-      widget._users = uMap;
-      widget._permissionsTable = pMap;
-      widget._games = games;
-    });
+    try {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final users = await auth.api("user");
+      final Map<String, dynamic> uMap = {for (final u in users) u['username']: u};
+      final permissions = await auth.api("user/permissions");
+      final Map<String, int> pMap = {for (final MapEntry<String, dynamic> p in permissions.entries) p.key: p.value};
+      final Map<String, dynamic> games = {for (final f in await auth.api("game")) f['_id']: f};
+      setState(() {
+        widget._users = uMap;
+        widget._permissionsTable = pMap;
+        widget._games = games;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading users: $e')));
+    }
   }
 
   @override
@@ -40,6 +44,47 @@ class _UsersScreenState extends State<UsersScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Users'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.sports_esports),
+            onPressed: () async {
+              showDialog(
+                context: context,
+                builder: (context) {
+                  final controller = TextEditingController();
+                  return AlertDialog(
+                    title: Text('Add game'),
+                    content: TextField(
+                      controller: controller,
+                      decoration: InputDecoration(labelText: 'Game Name'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        child: Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final auth = Provider.of<AuthService>(context, listen: false);
+                          final game = await auth.api("game", method: 'POST', data: {'name': controller.text});
+                          setState(() {
+                            widget._games[game['id']] = {"_id": game['id'], "name": controller.text};
+                          });
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        child: Text('Add'),
+                      ),
+                    ],
+                  );
+                }
+              );
+            },
+          )
+        ],
       ),
       body: ListView.builder(
         itemCount: widget._users.length,
