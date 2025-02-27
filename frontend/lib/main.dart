@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:MeTube/password_reset.dart';
+import 'package:MeTube/video_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'auth.dart';
@@ -36,14 +37,34 @@ void main() async {
   // final stream = await rootBundle.load('assets/cert.pem');
   // certificate = stream.buffer.asUint8List();
 
-  runApp(MyApp());
+  final authService = AuthService();
+
+  String initialRoute = "/login";
+  if (await authService.init()) {
+    debugPrint("Authenticated");
+    initialRoute = "/";
+  } else {
+    debugPrint("Not authenticated");
+    initialRoute = "/login";
+  }
+
+  runApp(MeTube(
+    initialRoute: initialRoute,
+    authService: authService,
+  ));
 }
 
-class MyApp extends StatelessWidget {
+class MeTube extends StatelessWidget {
+  final String initialRoute;
+  final AuthService authService;
+
+  MeTube({required this.initialRoute, required this.authService});
+
   @override
   Widget build(BuildContext context) {
+    debugPrint("rendering initial route: $initialRoute");
     return ChangeNotifierProvider(
-      create: (context) => AuthService(),
+      create: (context) => authService,
       child: MaterialApp(
         theme: ThemeData(
           brightness: Brightness.dark,
@@ -51,7 +72,31 @@ class MyApp extends StatelessWidget {
         ),
         title: 'MeTube',
         // Show LoginScreen or HomeScreen based on auth state
-        home: AuthWrapper(),
+        routes: {
+          '/': (c) => HomeScreen(),
+          '/login': (c) => LoginScreen(),
+          '/password_reset': (c) => PasswordResetScreen(),
+        },
+        initialRoute: initialRoute,
+        onGenerateInitialRoutes: (String initialRouteName) {
+          return [
+            MaterialPageRoute(
+              builder: (context) {
+                return initialRoute == "/login" ? LoginScreen() : HomeScreen();
+              },
+            ),
+          ];
+        },
+        onGenerateRoute: (settings) {
+          if (settings.name?.startsWith("/watch") == true) {
+            final videoId = settings.name!.split("/").last;
+            return MaterialPageRoute(builder: (context) {
+              return VideoScreen(video: videoId);
+            });
+          } else {
+            throw Exception("Unknown route: ${settings.name}");
+          }
+        }
       ),
     );
   }
@@ -64,13 +109,26 @@ class AuthWrapper extends StatelessWidget {
     // print("isAuthenticated: ${authService.isAuthenticated}");
     return Consumer<AuthService>(
       builder: (context, authService, child) {
-        if (!authService.isAuthenticated) {
-          return LoginScreen();
-        } else if (authService.isAuthenticated && authService.passwordReset == true) {
-          return PasswordResetScreen();
-        } else {
-          return HomeScreen();
-        }
+        return HomeScreen();
+        // if (authService.isLoading) {
+        //   return Scaffold(
+        //     body: Center(
+        //       child: Column(children: [
+        //         Text("Loading..."),
+        //         const SizedBox(height: 20),
+        //         const CircularProgressIndicator(),
+        //       ]),
+        //     )
+        //   );
+        // } else {
+        //   if (!authService.isAuthenticated) {
+        //     return LoginScreen();
+        //   } else if (authService.isAuthenticated && authService.passwordReset == true) {
+        //     return PasswordResetScreen();
+        //   } else {
+        //     return HomeScreen();
+        //   }
+        // }
       }
     );
   }

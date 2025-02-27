@@ -5,10 +5,8 @@ import 'package:provider/provider.dart';
 import 'auth.dart';
 
 class VideoScreen extends StatefulWidget {
-  final dynamic video;
-  final String game;
-  bool liked;
-  VideoScreen({super.key, required this.video, required this.game, required this.liked});
+  final String video;
+  VideoScreen({required this.video});
 
   @override
   _VideoScreenState createState() => _VideoScreenState();
@@ -16,6 +14,10 @@ class VideoScreen extends StatefulWidget {
 
 class _VideoScreenState extends State<VideoScreen> {
   Media? media;
+  late final dynamic video;
+  late final dynamic game;
+  late bool liked;
+  late int likes;
   late final player = Player();
   late final controller = VideoController(player);
   bool _loaded = false;
@@ -24,50 +26,53 @@ class _VideoScreenState extends State<VideoScreen> {
   void initState() {
     super.initState();
     final auth = Provider.of<AuthService>(context, listen: false);
-    if (player.platform is libmpvPlayer) {
-      // (player.platform as dynamic).setProperty('tls-cert-file', 'assets/cert.pem').then((_) {
-        // _loadVideo(auth);
-        // setState(() => _loaded = true);
-      // });
-    } else {
-      _loadVideo(auth);
-    }
+    _loadVideo(auth);
   }
 
-  Future<void> _loadVideo(AuthService auth) {
-    return auth.getVideo(widget.video["_id"]).then((m) {
-      media = m;
-      player.open(media!);
-      setState(() => _loaded = true);
-    });
+  Future<void> _loadVideo(AuthService auth) async {
+    video = await auth.api("video/${widget.video}");
+    game = await auth.api("game/${video["game"]}");
+    liked = await auth.api("like/${video["_id"]}");
+    likes = await auth.api("video/${video["_id"]}/likes");
+    media = await auth.getVideo(video["_id"]); 
+    player.open(media!);
+    setState(() => _loaded = true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: ListTile(
-          title: Text(widget.video["name"] ?? widget.video["_id"]),
-          subtitle: Text("${widget.game} - ${widget.video["owner"]}")
+        title: !_loaded ? Text("Video") : ListTile(
+          title: Text(video["name"] ?? video["_id"]),
+          subtitle: Text("${video["name"]} - ${video["owner"]}")
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
-          IconButton(
-            icon: Icon(widget.liked ? Icons.favorite : Icons.favorite_border),
-            onPressed: () async {
-              final auth = Provider.of<AuthService>(context, listen: false);
-              try {
-                await auth.api("video/${widget.video["_id"]}/like", method: widget.liked ? "DELETE" : "POST");
-                if (context.mounted) {
-                  setState(() => widget.liked = !widget.liked);
+          !_loaded ? Container() : Row(
+            children: [
+              Text("$likes"),
+              IconButton(
+                icon: Icon(liked ? Icons.favorite : Icons.favorite_border),
+                onPressed: () async {
+                  final auth = Provider.of<AuthService>(context, listen: false);
+                  try {
+                    await auth.api("video/${video["_id"]}/like", method: liked ? "DELETE" : "POST");
+                    if (context.mounted) {
+                      setState(()  { 
+                        liked = !liked;
+                        likes += liked ? 1 : -1;
+                      });
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error while liking video: $e')));
+                    }
+                  }
                 }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error while liking video: $e')));
-                }
-              }
-            }
+              ),
+            ]
           )
         ]
       ),
@@ -75,7 +80,7 @@ class _VideoScreenState extends State<VideoScreen> {
       extendBody: true,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return !_loaded ? const CircularProgressIndicator() : Video(controller: controller);
+          return !_loaded ? const Center(child: CircularProgressIndicator()) : Video(controller: controller);
         }
       )
     );

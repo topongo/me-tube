@@ -43,16 +43,24 @@ class AuthService with ChangeNotifier {
   }
 
   // Load token from SharedPreferences
-  Future<void> _loadToken() async {
+  Future<bool> init() async {
     final prefs = await SharedPreferences.getInstance();
     _refreshToken = prefs.getString('refresh_token');
     // print("got token: $_refreshToken");
-    if (kIsWeb) {
-      _refreshToken = "ONEhJN/3OVRiKsKNaXDaa6U1KWK8CIzga/QTVh/K5e0=";
-    }
-    if (_refreshToken != null) {
-      // print("Refresh token is present: refreshing access...");
-      await _refreshAccessToken();
+    if (_refreshToken != null || kIsWeb) {
+      debugPrint("Refresh token is present: refreshing access...");
+      try {
+        await _refreshAccessToken();
+      } catch (e) {
+        debugPrint("failed to refresh access token: $e");
+        if (e is ApiError) {
+          debugPrint("Invalid refresh token: redirect to login");
+          if (e.kind == "refresh_failed" && e.inner!.kind == "invalid_refresh_token") {
+            debugPrint("token was invalid/expired: deleting token");
+            await _deleteToken();
+          }
+        }
+      }
     } else {
       debugPrint("Refresh token missing: redirect to login");
     }
@@ -60,6 +68,7 @@ class AuthService with ChangeNotifier {
     _authStreamController.add(isAuthenticated); // Notify stream
     await updateUserDetails();
     notifyListeners();
+    return isAuthenticated;
   }
 
   Future<void> _saveToken(String token) async {
@@ -94,7 +103,7 @@ class AuthService with ChangeNotifier {
       if (response.statusCode == 200) {
         _accessToken = data['access_token'];
       } else {
-        throw ApiError("refresh_failed", "Failed to refresh access token");
+        throw ApiError("refresh_failed", "Failed to refresh access token: ${data['error']}", inner: ApiError.fromData(data));
       }
     } catch (e) {
       rethrow;
@@ -334,8 +343,9 @@ Stream<List<int>> streamWrapper(Stream<List<int>> stream) async* {
 class ApiError {
   final String? kind;
   final String message;
+  final ApiError? inner;
 
-  ApiError(this.kind, this.message);
+  ApiError(this.kind, this.message, {this.inner});
 
   factory ApiError.fromData(dynamic data) => ApiError(data['error'], data['message']);
 
