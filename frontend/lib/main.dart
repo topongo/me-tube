@@ -25,7 +25,11 @@ void main() async {
 
   // get apiBaseUrl from env variable
   if (!kIsWeb) {
-    apiBaseUrl = Platform.environment["API_BASE_URL"] ?? "http://127.0.0.1:8000/api";
+    if (kDebugMode) {
+      apiBaseUrl = Platform.environment["API_BASE_URL"] ?? "http://127.0.0.1:8000/api";
+    } else {
+      throw Exception("native app isn't meant to be used in release mode");
+    }
   } else {
     apiBaseUrl = "/api";
   }
@@ -42,7 +46,12 @@ void main() async {
   String initialRoute = "/login";
   if (await authService.init()) {
     debugPrint("Authenticated");
-    initialRoute = "/";
+    if (authService.passwordReset == true) {
+      debugPrint("Password reset required");
+      initialRoute = "/password_reset";
+    } else {
+      initialRoute = "/";
+    }
   } else {
     debugPrint("Not authenticated");
     initialRoute = "/login";
@@ -82,7 +91,12 @@ class MeTube extends StatelessWidget {
           return [
             MaterialPageRoute(
               builder: (context) {
-                return initialRoute == "/login" ? LoginScreen() : HomeScreen();
+                return switch (initialRoute) {
+                  "/" => HomeScreen(),
+                  "/login" => LoginScreen(),
+                  "/password_reset" => PasswordResetScreen(),
+                  _ => LoginScreen(),
+                };
               },
             ),
           ];

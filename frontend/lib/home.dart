@@ -29,6 +29,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, bool Function(dynamic)> _filters = {};
 
   get _filteredVideos => _videos.indexed.where((v) => !_filters.values.any((f) => f(v.$2))).map((v) => v.$1).toList();
+
+  void _widgetError(e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$e")));
+    }
+  }
   
   Future<void> getFilesAndLikes() async {
     if (_files != null) return;
@@ -80,6 +86,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    final auth = Provider.of<AuthService>(context, listen: false);
+    if (!auth.isAuthenticated || auth.passwordReset == true) {
+      return;
+    }
     _scrollController = ScrollController()..addListener(() {
       // print("scrolling: ${_scrollController.position.pixels}");
       final fetchTrigger = .8 * _scrollController.position.maxScrollExtent;
@@ -117,14 +127,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<int> filteredVideos = _filteredVideos;
     return Consumer<AuthService>(
       builder: (context, authService, child) {
-        if (authService.isAuthenticated) {
+        if (authService.isAuthenticated && authService.passwordReset != true) {
           return child!;
         } else {
-          Future.delayed(Duration(milliseconds: 200), () {
-            if (context.mounted) {
-              Navigator.pushReplacementNamed(context, "/login");
-            }
-          });
+          // Future.delayed(Duration(milliseconds: 200), () {
+          //   if (context.mounted) {
+          //     Navigator.pushReplacementNamed(context, "/login");
+          //   }
+          // });
           return Scaffold();
         }
       },
@@ -139,7 +149,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ) : Container(),
             IconButton(
               icon: Icon(Icons.logout),
-              onPressed: () async { await auth.logout(); },
+              onPressed: () async {
+                try {
+                  await auth.logout();
+                  if (context.mounted) {
+                    Navigator.pushReplacementNamed(context, "/login");
+                  }
+                } catch (e) {
+                  _widgetError(e);
+                }
+              },
             ),
             IconButton(
               icon: Icon(Icons.refresh),
@@ -149,7 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () async {
-            final List<dynamic> result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UploadScreen()));
+            final List<dynamic> result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UploadScreen()))
+              .catchError(_widgetError);
             if (result.isNotEmpty) {
               _refresh();
             }

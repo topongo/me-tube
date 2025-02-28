@@ -80,10 +80,18 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> _deleteToken() async {
+    try {
+      await api("auth/logout");
+    } catch (e) {
+      debugPrint("Failed to actively logout: $e");
+      rethrow;
+    }
     _accessToken = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('refresh_token');
-    _refreshToken = null;
+    if (!kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('refresh_token');
+      _refreshToken = null;
+    }
     _authStreamController.add(false); // Notify unauthenticated
   }
 

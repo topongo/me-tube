@@ -144,6 +144,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
   Future<void> _upload(context) async {
     if (!_formKey.currentState!.validate()) return;
+    if (_uploading) return;
     if (_files == null || _files!.files.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: const Text("Select at least one file."))

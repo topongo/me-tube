@@ -26,7 +26,17 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
       if (context.mounted) {
-        Navigator.pushReplacementNamed(context, "/");
+        if (authService.isAuthenticated) {
+          if (authService.passwordReset == true) {
+            Navigator.pushReplacementNamed(context, "/password_reset");
+          } else {
+            Navigator.pushReplacementNamed(context, "/");
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Login was successful, but an error occurred.")),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

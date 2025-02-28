@@ -14,6 +14,9 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
   bool _isLoading = false;
 
   Future<void> _resetPassword() async {
+    if (_isLoading) {
+      return;
+    }
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -22,6 +25,9 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
       final auth = Provider.of<AuthService>(context, listen: false);
       try {
         await auth.resetPassword(_passwordController.text);
+        if (context.mounted) {
+          Navigator.pushReplacementNamed(context, '/');
+        }
       } catch(e) {
         rethrow;
       } finally {
@@ -61,6 +67,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                 autofillHints: [AutofillHints.password],
                 decoration: InputDecoration(labelText: 'Confirm Password'),
                 obscureText: true,
+                onEditingComplete: _resetPassword,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please confirm your password';
@@ -72,7 +79,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                 },
               ),
               ElevatedButton(
-                onPressed: _isLoading ? null : _resetPassword,
+                onPressed: _resetPassword,
                 child: Text('Reset Password'),
               ),
             ],

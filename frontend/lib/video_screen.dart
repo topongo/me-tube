@@ -45,7 +45,7 @@ class _VideoScreenState extends State<VideoScreen> {
       appBar: AppBar(
         title: !_loaded ? Text("Video") : ListTile(
           title: Text(video["name"] ?? video["_id"]),
-          subtitle: Text("${video["name"]} - ${video["owner"]}")
+          subtitle: Text("${game["name"]} - ${video["owner"]}")
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
