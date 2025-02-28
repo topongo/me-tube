@@ -2,17 +2,22 @@ use std::io::Write;
 
 use me_tube::{self, db::DBWrapper, Permissions, User};
 use clap::Parser;
+use clap::ArgAction;
 use rocket::figment::providers::Serialized;
 
 #[derive(Parser)]
 enum Command {
-    #[clap(name = "create-admin")]
-    CreateAdmin {
+    #[clap(name = "create-user")]
+    CreateUser {
         #[clap(short, long)]
         username: Option<String>,
         #[clap(short, long)]
         password: Option<String>,
-    }
+        #[clap(long, action = ArgAction::SetTrue)]
+        admin: bool,
+        #[clap(long)]
+        permissions: Option<u32>,
+    },
 }
 
 #[tokio::main]
@@ -26,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = DBWrapper::new(db);
     db.database();
     match command {
-        Command::CreateAdmin { username, password } => {
+        Command::CreateUser { username, password, admin, permissions } => {
             let username = match username {
                 Some(username) => username,
                 None => {
@@ -59,7 +64,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             User::validate(Some(&username), Some(&password))?;
             let mut new_user = User::create(username, password);
-            new_user.push_permissions(Permissions::ADMIN);
+            if admin {
+                new_user.push_permissions(Permissions::ADMIN);
+            }
+            if let Some(permissions) = permissions {
+                new_user.push_permissions(permissions);
+            }
             db.add_user(new_user).await?
         }
     }
