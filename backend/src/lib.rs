@@ -42,6 +42,7 @@ pub fn rocket() -> rocket::Rocket<rocket::Build> {
         .mount("/api/auth", routes![
             authentication::login,
             authentication::refresh,
+            authentication::logout,
         ])
         .mount("/api/user", routes![
             user::me,

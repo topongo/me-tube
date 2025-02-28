@@ -190,6 +190,11 @@ impl User {
         (self.generate_access(), self.generate_refresh())
     }
 
+    pub(crate) fn invalidate_tokens(&mut self) {
+        self.access_token = None;
+        self.refresh_token = None;
+    }
+
     pub(crate) fn allowed(&self, permission: u32) -> bool {
         self.permissions.inner & Permissions::ADMIN != 0 ||
         self.permissions.inner & permission != 0

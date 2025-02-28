@@ -261,6 +261,15 @@ pub(crate) async fn login(form: Json<LoginForm>, cookies: &CookieJar<'_>, db: DB
     }
 }
 
+#[get("/logout")]
+pub(crate) async fn logout(cookies: &CookieJar<'_>, user: Result<UserGuard<OkExpired>, AuthenticationError>, db: DBWrapper) -> ApiResponder<()> {
+    let mut user = user?.user;
+    cookies.remove_private("refresh");
+    user.invalidate_tokens();
+    db.update_user(&user).await?;
+    ().into()
+}
+
 
 #[derive(Serialize)]
 pub(crate) struct RefreshResponse {
