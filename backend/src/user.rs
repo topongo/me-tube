@@ -212,7 +212,7 @@ impl DBWrapper {
         Ok(())
     }
 
-    pub(crate) async fn update_user(&self, user: &User) -> Result<(), mongodb::error::Error> {
+    pub async fn update_user(&self, user: &User) -> Result<(), mongodb::error::Error> {
         self
             .collection::<User>(Self::USERS)
             .replace_one(doc! {"username": &user.username}, user, None)

@@ -105,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !no_reset {
                 user.password_reset = true;
             }
+            db.update_user(&user).await?
         }
     }
     Ok(())
