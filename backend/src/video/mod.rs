@@ -9,7 +9,6 @@ use file::VideoFile;
 use rand::Rng;
 use rocket::fs::NamedFile;
 use rocket::futures::{TryStreamExt, StreamExt};
-use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::{form::Form, fs::TempFile};
 use rocket_db_pools::mongodb;

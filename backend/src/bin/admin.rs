@@ -21,6 +21,10 @@ enum Command {
     #[clap(name = "reset-password")]
     ResetPassword {
         username: String,
+    },
+    #[clap(name = "change-password")]
+    ChangePassword {
+        username: String,
         #[clap(short, long)]
         password: Option<String>,
         #[clap(long, action = ArgAction::SetTrue, help = "Do not set password_reset flag on user. They won't be forced to change it on next login.")]
@@ -80,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             db.add_user(new_user).await?
         }
-        Command::ResetPassword { username, password, no_reset } => {
+        Command::ChangePassword { username, password, no_reset } => {
             let mut user = match db.get_user(&username).await? {
                 Some(user) => user,
                 None => {
@@ -105,6 +109,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !no_reset {
                 user.password_reset = true;
             }
+            db.update_user(&user).await?
+        }
+        Command::ResetPassword { username } => {
+            let mut user = match db.get_user(&username).await? {
+                Some(user) => user,
+                None => {
+                    eprintln!("User not found");
+                    std::process::exit(1);
+                }
+            };
+            if user.password_reset {
+                eprintln!("Reset already triggered for user");
+                std::process::exit(1);
+            }
+            user.password_reset = true;
             db.update_user(&user).await?
         }
     }
