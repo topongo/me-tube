@@ -279,8 +279,8 @@ class AuthService with ChangeNotifier {
 
   Future<dynamic> uploadVideos(String game, List<PlatformFile> files, Map<String, String> names, Map<String, bool> publics, Function(int, int) onProgress) async {
     final responses = [];
-    await _refreshAccessToken();
     for (var i = 0; i < files.length; i++) {
+      await _refreshAccessToken();
       final form = FormData();
       form.fields.add(MapEntry("game", game));
       form.fields.add(MapEntry("files.0.name", names[files[i].name] ?? files[i].name));

@@ -169,6 +169,11 @@ class _UploadScreenState extends State<UploadScreen> {
         }
       );
       Navigator.pop(context, response);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Upload error: $e"))
+      );
+      _files = null;
     } finally {
       setState(() { _uploading = false; _progress = null; });
     }
