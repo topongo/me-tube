@@ -18,6 +18,14 @@ enum Command {
         #[clap(long)]
         permissions: Option<u32>,
     },
+    #[clap(name = "reset-password")]
+    ResetPassword {
+        username: String,
+        #[clap(short, long)]
+        password: Option<String>,
+        #[clap(long, action = ArgAction::SetTrue, help = "Do not set password_reset flag on user. They won't be forced to change it on next login.")]
+        no_reset: bool,
+    }
 }
 
 #[tokio::main]
@@ -71,6 +79,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 new_user.push_permissions(permissions);
             }
             db.add_user(new_user).await?
+        }
+        Command::ResetPassword { username, password, no_reset } => {
+            let mut user = match db.get_user(&username).await? {
+                Some(user) => user,
+                None => {
+                    eprintln!("User not found");
+                    std::process::exit(1);
+                }
+            };
+            let password = match password {
+                Some(password) => password,
+                None => {
+                    let p = rpassword::prompt_password("Password: ")?;
+                    let p2 = rpassword::prompt_password("Confirm password: ")?;
+                    if p != p2 {
+                        eprintln!("Passwords do not match");
+                        std::process::exit(1);
+                    }
+                    p
+                }
+            };
+            User::validate(None, Some(&password))?;
+            user.set_password(password);
+            if !no_reset {
+                user.password_reset = true;
+            }
         }
     }
     Ok(())

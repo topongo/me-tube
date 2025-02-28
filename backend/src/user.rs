@@ -42,7 +42,7 @@ pub struct User {
     access_token: Option<ExpiringToken>,
     refresh_token: Option<ExpiringToken>,
     permissions: Permissions,
-    pub(crate) password_reset: bool,
+    pub password_reset: bool,
 }
 
 #[derive(Debug)]
@@ -154,6 +154,10 @@ impl User {
         let argon2 = Argon2::default();
         let hash = PasswordHash::new(&self.password_hash).unwrap();
         argon2.verify_password(password.as_bytes(), &hash).is_ok()
+    }
+
+    pub fn set_password(&mut self, password: String) {
+        self.password_hash = Self::password_hash(password);
     }
 
     pub(crate) fn check_access(&self, access_token: &str) -> bool {
@@ -390,7 +394,7 @@ pub(crate) async fn patch(form: Json<PatchForm>, username: &str, user: Result<Us
         if user.allowed(Permissions::ADMIN) || user.username == target_user.username {
             User::validate(None, password.as_deref()).map_err(PostError::from)?;
             if let Some(password) = password {
-                target_user.password_hash = User::password_hash(password);
+                target_user.set_password(password);
                 target_user.password_reset = false;
             }
             db.update_user(&target_user).await?;
