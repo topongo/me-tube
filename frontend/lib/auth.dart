@@ -243,7 +243,10 @@ class AuthService with ChangeNotifier {
         } catch (e) {
           if (e is ApiError) {
             if (e.kind == "refresh_failed") {
-              await logout();
+              if (["invalid_refresh_token", "missing_refresh_token"].contains(e.inner!.kind)) {
+                await _deleteToken();
+                throw ApiError("refresh_failed", "Refresh token expired: $e");
+              }
               rethrow;
             }
           } else {
