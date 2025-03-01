@@ -80,12 +80,6 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> _deleteToken() async {
-    try {
-      await api("auth/logout");
-    } catch (e) {
-      debugPrint("Failed to actively logout: $e");
-      rethrow;
-    }
     _accessToken = null;
     if (!kIsWeb) {
       final prefs = await SharedPreferences.getInstance();
@@ -216,6 +210,12 @@ class AuthService with ChangeNotifier {
 
   // Logout
   Future<void> logout() async {
+    try {
+      await api("auth/logout");
+    } catch (e) {
+      debugPrint("Failed to actively logout: $e");
+      rethrow;
+    }
     await _deleteToken();
     await updateUserDetails();
     notifyListeners();
